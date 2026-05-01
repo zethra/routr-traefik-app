@@ -1,17 +1,35 @@
+# ──────────────────────────────────────────────
+#  Routr + Traefik
+#
+#  Required .env variables:
+#    ROUTR_TOKEN   – shared secret between Traefik and Routr
+#    ROUTR_DOMAIN  – hostname for the Routr GUI  (e.g. routr.example.com)
+#    ACME_EMAIL    – email for Let's Encrypt notifications
+# ──────────────────────────────────────────────
+
 services:
+
+  # ── Traefik ──────────────────────────────────
   traefik:
     image: traefik:v3.6
     restart: unless-stopped
     command:
+      # Entrypoints
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
+
+      # Docker provider — picks up labels from other containers
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=traefik
+
+      # HTTP provider — Routr serves the dynamic config
       - --providers.http.endpoint=http://routr:3000/api/default?token=${ROUTR_TOKEN}
       - --providers.http.pollInterval=5s
+
+      # Let's Encrypt (TLS challenge)
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/certs/acme.json
       - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
@@ -20,19 +38,20 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-certs:/certs
+      - /srv/routr/traefik:/certs
     networks:
       - traefik
 
+  # ── Routr ─────────────────────────────────────
   routr:
-    build: .
+    image: ghcr.io/zethra/routr:latest
     restart: unless-stopped
     environment:
       DATA_DIR: /data
       PROFILE_NAME: default
       GLOBAL_TOKEN: ${ROUTR_TOKEN}
     volumes:
-      - routr-data:/data
+      - /srv/routr:/data
     networks:
       - traefik
     labels:
@@ -42,10 +61,13 @@ services:
       - traefik.http.routers.routr.tls.certresolver=letsencrypt
       - traefik.http.services.routr.loadbalancer.server.port=3000
 
+# ── Shared network ────────────────────────────
+# Other containers join this network to be reachable by Traefik
 networks:
   traefik:
     name: traefik
 
-volumes:
-  routr-data:
-  traefik-certs:
+# ── Persistent data ───────────────────────────
+# Host paths used:
+#   /srv/routr           -> Routr data
+#   /srv/routr/traefik   -> Traefik ACME certificates

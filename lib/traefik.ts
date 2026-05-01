@@ -1,5 +1,7 @@
 import type { RouterRow, MiddlewareRow, DomainRow } from './db'
 
+type ServiceEndpoint = { url: string; weight: number }
+
 function parseStringArray(value: string, fallback: string[] = []): string[] {
   try {
     const parsed = JSON.parse(value)
@@ -18,6 +20,39 @@ function parseObject(value: string): Record<string, unknown> {
   } catch {
     return {}
   }
+}
+
+function normalizeWeight(weight: number): number {
+  return Number.isFinite(weight) && weight > 0 ? Math.floor(weight) : 1
+}
+
+function parseServiceEndpoints(value: string): ServiceEndpoint[] {
+  const trimmed = value.trim()
+  if (!trimmed) return []
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item): ServiceEndpoint[] => {
+        if (typeof item === 'string') {
+          const url = item.trim()
+          return url ? [{ url, weight: 1 }] : []
+        }
+        if (item && typeof item === 'object' && 'url' in item && typeof item.url === 'string') {
+          const url = item.url.trim()
+          if (!url) return []
+
+          const rawWeight = 'weight' in item ? Number(item.weight) : 1
+          return [{ url, weight: normalizeWeight(rawWeight) }]
+        }
+        return []
+      })
+    }
+  } catch {
+    // Backward compatibility for single stored URLs.
+  }
+
+  return [{ url: trimmed, weight: 1 }]
 }
 
 function extractHostname(rule: string): string | null {
@@ -49,7 +84,6 @@ export function buildTraefikConfig(
       ...(entryPoints.length ? { entryPoints } : {}),
       service: row.name,
       ...(mws.length ? { middlewares: mws } : {}),
-      ...(row.priority != null ? { priority: row.priority } : {}),
     }
 
     const hostname = extractHostname(row.rule)
@@ -66,9 +100,17 @@ export function buildTraefikConfig(
       router.tls = tls
     }
 
+    const endpoints = parseServiceEndpoints(row.service_url)
+    if (endpoints.length === 0) continue
+
     httpRouters[row.name] = router
     httpServices[row.name] = {
-      loadBalancer: { servers: [{ url: row.service_url }] },
+      loadBalancer: {
+        servers: endpoints.map(endpoint => ({
+          url: endpoint.url,
+          weight: endpoint.weight,
+        })),
+      },
     }
   }
 

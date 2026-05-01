@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createRouter, updateRouter } from '@/app/_actions/routers'
 import { toast } from 'sonner'
+import { ArrowDown, ArrowUp } from 'lucide-react'
 
 type RouterData = {
   id: string
@@ -22,6 +23,7 @@ type RouterData = {
 }
 
 type Domain = { id: string; domain: string }
+type ServiceEndpoint = { url: string; weight: number }
 
 type Props = {
   open: boolean
@@ -44,6 +46,51 @@ function parseRuleIntoDomain(rule: string, domains: Domain[]): { subdomain: stri
     }
   }
   return null
+}
+
+function normalizeWeight(weight: number): number {
+  return Number.isFinite(weight) && weight > 0 ? Math.floor(weight) : 1
+}
+
+function parseServiceEndpoints(value: string): ServiceEndpoint[] {
+  const trimmed = value.trim()
+  if (!trimmed) return []
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item): ServiceEndpoint[] => {
+        if (typeof item === 'string') {
+          const url = item.trim()
+          return url ? [{ url, weight: 1 }] : []
+        }
+        if (item && typeof item === 'object' && 'url' in item && typeof item.url === 'string') {
+          const url = item.url.trim()
+          if (!url) return []
+
+          const rawWeight = 'weight' in item ? Number(item.weight) : 1
+          return [{ url, weight: normalizeWeight(rawWeight) }]
+        }
+        return []
+      })
+    }
+  } catch {
+    // Keep backward compatibility with older single-url values.
+  }
+
+  return [{ url: trimmed, weight: 1 }]
+}
+
+function serializeServiceEndpoints(endpoints: ServiceEndpoint[]): string {
+  const clean = endpoints
+    .map(endpoint => ({
+      url: endpoint.url.trim(),
+      weight: normalizeWeight(endpoint.weight),
+    }))
+    .filter(endpoint => endpoint.url)
+
+  if (clean.length === 0) return ''
+  return JSON.stringify(clean)
 }
 
 export function RouterDialog({ open, onClose, router, profileId, availableEntryPoints, availableMiddlewares, availableDomains }: Props) {
@@ -69,14 +116,16 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
   const [customRule, setCustomRule] = useState(router?.rule ?? '')
 
   const [name, setName] = useState(router?.name ?? '')
-  const [serviceUrl, setServiceUrl] = useState(router?.service_url ?? '')
+  const [serviceEndpoints, setServiceEndpoints] = useState<ServiceEndpoint[]>(() => {
+    const initial = parseServiceEndpoints(router?.service_url ?? '')
+    return initial.length > 0 ? initial : [{ url: '', weight: 1 }]
+  })
   const [selectedEPs, setSelectedEPs] = useState<string[]>(
     router ? JSON.parse(router.entry_points) : []
   )
   const [selectedMWs, setSelectedMWs] = useState<string[]>(
     router ? JSON.parse(router.middlewares) : []
   )
-  const [priority, setPriority] = useState<string>(router?.priority?.toString() ?? '')
   const [enabled, setEnabled] = useState(router ? router.enabled === 1 : true)
 
   const computedHostname = selectedDomain
@@ -106,21 +155,55 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
 
   function handleClose() {
     if (!isEdit) {
-      setName(''); setServiceUrl('')
+      setName(''); setServiceEndpoints([{ url: '', weight: 1 }])
       setSubdomain('')
       const stored = localStorage.getItem('routr:lastDomain')
       setSelectedDomain((stored && availableDomains.some(d => d.domain === stored)) ? stored : (availableDomains[0]?.domain ?? ''))
       setCustomRule('')
       setSelectedEPs([]); setSelectedMWs([])
-      setPriority(''); setEnabled(true)
+      setEnabled(true)
       setMode(hasDomains ? 'domain' : 'custom')
     }
     onClose()
   }
 
+  function updateServiceEndpointUrl(index: number, value: string) {
+    setServiceEndpoints(prev => prev.map((item, i) => (i === index ? { ...item, url: value } : item)))
+  }
+
+  function updateServiceEndpointWeight(index: number, value: string) {
+    const parsed = Number.parseInt(value, 10)
+    setServiceEndpoints(prev => prev.map((item, i) => (i === index ? { ...item, weight: normalizeWeight(parsed) } : item)))
+  }
+
+  function addServiceEndpoint() {
+    setServiceEndpoints(prev => [...prev, { url: '', weight: 1 }])
+  }
+
+  function removeServiceEndpoint(index: number) {
+    setServiceEndpoints(prev => {
+      if (prev.length === 1) return prev
+      return prev.filter((_, i) => i !== index)
+    })
+  }
+
+  function moveServiceEndpoint(index: number, direction: -1 | 1) {
+    setServiceEndpoints(prev => {
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev
+
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      next.splice(nextIndex, 0, item)
+      return next
+    })
+  }
+
   function handleSubmit() {
-    if (!name.trim() || !activeRule.trim() || !serviceUrl.trim()) {
-      toast.error('Name, hostname and service URL are required')
+    const serializedServices = serializeServiceEndpoints(serviceEndpoints)
+
+    if (!name.trim() || !activeRule.trim() || !serializedServices) {
+      toast.error('Name, hostname and at least one endpoint URL are required')
       return
     }
     if (mode === 'domain' && !selectedDomain) {
@@ -132,10 +215,9 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
         const data = {
           name: name.trim(),
           rule: activeRule.trim(),
-          service_url: serviceUrl.trim(),
+          service_url: serializedServices,
           entry_points: selectedEPs,
           middlewares: selectedMWs,
-          priority: priority ? parseInt(priority) : null,
           enabled,
         }
         if (isEdit) {
@@ -216,9 +298,69 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
             )}
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="r-svc">Service URL</Label>
-            <Input id="r-svc" value={serviceUrl} onChange={e => setServiceUrl(e.target.value)} placeholder="http://backend:8080" />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Endpoints</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addServiceEndpoint} className="h-7 px-2 text-xs">
+                + Add
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {serviceEndpoints.map((endpoint, index) => (
+                <div key={`svc-${index}`} className="flex items-center gap-2">
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => moveServiceEndpoint(index, -1)}
+                      disabled={index === 0}
+                      className="h-4 w-6"
+                      aria-label={`Move endpoint ${index + 1} up`}
+                    >
+                      <ArrowUp className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => moveServiceEndpoint(index, 1)}
+                      disabled={index === serviceEndpoints.length - 1}
+                      className="h-4 w-6"
+                      aria-label={`Move endpoint ${index + 1} down`}
+                    >
+                      <ArrowDown className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <Input
+                    id={`r-svc-${index}`}
+                    value={endpoint.url}
+                    onChange={e => updateServiceEndpointUrl(index, e.target.value)}
+                    placeholder="http://backend:8080"
+                  />
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={endpoint.weight}
+                    onChange={e => updateServiceEndpointWeight(index, e.target.value)}
+                    className="w-20"
+                    aria-label={`Weight for endpoint ${index + 1}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeServiceEndpoint(index)}
+                    disabled={serviceEndpoints.length === 1}
+                    className="h-9 px-2 text-xs"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Endpoints support weights for load balancing. Reorder them with arrows.</p>
           </div>
 
           <div className="space-y-1">
@@ -267,11 +409,6 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="r-priority">Priority (optional)</Label>
-            <Input id="r-priority" type="number" value={priority} onChange={e => setPriority(e.target.value)} placeholder="100" />
           </div>
 
           {isEdit && (

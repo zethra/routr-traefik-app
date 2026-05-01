@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import {
   ShieldCheck, ShieldAlert, ShieldX, Loader2, Lock,
   Globe, Power, Pencil, Trash2, Search, Plus, RefreshCw, Copy,
-  ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreHorizontal, Sparkles,
 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -26,6 +26,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 type RouterRow = {
   id: string
@@ -53,6 +54,7 @@ type Props = {
 }
 
 type SSLState = { status: 'checking' | 'done'; result?: SSLResult }
+type ServiceEndpoint = { url: string; weight: number }
 
 function extractHostname(rule: string): string | null {
   const match = rule.match(/Host\(`([^`]+)`\)/)
@@ -79,9 +81,9 @@ function SSLIcon({ state }: { state?: SSLState }) {
   const { result } = state
   if (!result?.valid) return <ShieldX className="h-3.5 w-3.5 text-destructive" />
   if (result.daysLeft !== null && result.daysLeft <= 14) {
-    return <span title={`Expires in ${result.daysLeft}d`}><ShieldAlert className="h-3.5 w-3.5 text-amber-500" /></span>
+    return <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
   }
-  return <span title={`Valid · ${result.daysLeft}d`}><ShieldCheck className="h-3.5 w-3.5 text-green-500" /></span>
+  return <ShieldCheck className="h-3.5 w-3.5 text-green-500" />
 }
 
 const PAGE_SIZES = [10, 25, 50]
@@ -100,6 +102,39 @@ function serviceTarget(serviceUrl: string): string {
       .split('?')[0]
       .split('#')[0]
   }
+}
+
+function normalizeWeight(weight: number): number {
+  return Number.isFinite(weight) && weight > 0 ? Math.floor(weight) : 1
+}
+
+function parseServiceEndpoints(value: string): ServiceEndpoint[] {
+  const trimmed = value.trim()
+  if (!trimmed) return []
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item): ServiceEndpoint[] => {
+        if (typeof item === 'string') {
+          const url = item.trim()
+          return url ? [{ url, weight: 1 }] : []
+        }
+        if (item && typeof item === 'object' && 'url' in item && typeof item.url === 'string') {
+          const url = item.url.trim()
+          if (!url) return []
+
+          const rawWeight = 'weight' in item ? Number(item.weight) : 1
+          return [{ url, weight: normalizeWeight(rawWeight) }]
+        }
+        return []
+      })
+    }
+  } catch {
+    // Backward compatibility for older single-url values.
+  }
+
+  return [{ url: trimmed, weight: 1 }]
 }
 
 export function RoutersTab({ profileId, routers, entryPointNames, middlewareNames, domains }: Props) {
@@ -172,10 +207,11 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
 
   const filtered = routers.filter(r => {
     const q = search.toLowerCase()
+    const endpoints = parseServiceEndpoints(r.service_url)
     return (
       r.name.toLowerCase().includes(q) ||
       (extractHostname(r.rule) ?? '').toLowerCase().includes(q) ||
-      r.service_url.toLowerCase().includes(q)
+      endpoints.some(endpoint => endpoint.url.toLowerCase().includes(q))
     )
   })
 
@@ -324,12 +360,12 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">Router</TableHead>
               <TableHead className="w-[240px] pl-4 pr-1 py-3 text-xs uppercase tracking-wide text-muted-foreground">Hostname</TableHead>
               <TableHead className="w-[40px] px-0 py-3" />
-              <TableHead className="w-[240px] pl-3 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Services</TableHead>
+              <TableHead className="w-[240px] pl-3 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Endpoint</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">Type</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Entry Points</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Middlewares</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">TLS</TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Actions</TableHead>
+              <TableHead className="px-4 py-3 w-[150px]"/>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -344,6 +380,8 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                 const eps: string[] = JSON.parse(r.entry_points)
                 const mws: string[] = JSON.parse(r.middlewares)
                 const hostname = extractHostname(r.rule)
+                const endpoints = parseServiceEndpoints(r.service_url)
+                const primaryEndpoint = endpoints[0]
                 const isLast = i === paginated.length - 1
                 const isSelected = selectedIds.includes(r.id)
                 return (
@@ -363,9 +401,6 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                     {/* Name */}
                     <TableCell className="px-4 py-3">
                       <span className="font-medium">{r.name}</span>
-                      {r.priority != null && (
-                        <span className="ml-1.5 text-xs text-muted-foreground">p{r.priority}</span>
-                      )}
                     </TableCell>
 
                     {/* Rule */}
@@ -394,15 +429,29 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
 
                     {/* Services */}
                     <TableCell className="w-[240px] pl-3 pr-4 py-3 whitespace-nowrap">
-                      <a
-                        href={r.service_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
-                        title={`Open ${r.service_url}`}
-                      >
-                        {serviceTarget(r.service_url)}
-                      </a>
+                      {primaryEndpoint?.url ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <a
+                            href={primaryEndpoint.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
+                            title={`Open ${primaryEndpoint.url} (weight ${primaryEndpoint.weight})`}
+                          >
+                            {serviceTarget(primaryEndpoint.url)}
+                          </a>
+                          {endpoints.length > 1 && (
+                            <span
+                              className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                              title={endpoints.slice(1).map(endpoint => `${endpoint.url} (weight ${endpoint.weight})`).join('\n')}
+                            >
+                              +{endpoints.length - 1}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">No service</span>
+                      )}
                     </TableCell>
 
                     {/* Type */}
@@ -439,17 +488,37 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                     <TableCell className="px-4 py-3">
                       {(() => {
                         const matched = hostname ? matchDomain(hostname, domains) : null
-                        if (matched) return (
+                        const sslState = sslMap[r.id]
+                        const tooltip = sslState?.status === 'done' && sslState.result?.valid && sslState.result.daysLeft !== null
+                          ? `Valid for ${sslState.result.daysLeft} days`
+                          : null
+
+                        const encryptedBadge = (
                           <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
                             <Lock className="h-3 w-3" />
                             Encrypted
-                            <SSLIcon state={sslMap[r.id]} />
+                            <SSLIcon state={sslState} />
                           </span>
+                        )
+
+                        if (matched) return (
+                          tooltip ? (
+                            <Tooltip>
+                              <TooltipTrigger className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                                <Lock className="h-3 w-3" />
+                                Encrypted
+                                <SSLIcon state={sslState} />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {tooltip}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : encryptedBadge
                         )
                         if (hostname) return (
                           <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
                             <Lock className="h-3 w-3" />
-                            <SSLIcon state={sslMap[r.id]} />
+                            <SSLIcon state={sslState} />
                           </span>
                         )
                         return null
@@ -458,38 +527,38 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
 
                     {/* Actions */}
                     <TableCell className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleToggle(r.id, r.enabled)}
-                          disabled={isPending}
-                          className={`p-1.5 rounded hover:bg-muted transition-colors ${r.enabled ? 'text-green-500' : 'text-muted-foreground'}`}
-                          title={r.enabled ? 'Disable' : 'Enable'}
-                        >
-                          <Power className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleClone(r.id, r.name)}
-                          disabled={isPending}
-                          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                          title="Clone"
-                        >
-                          <Copy className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setEditTarget(r)}
-                          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(r.id, r.name)}
-                          disabled={isPending}
-                          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                            aria-label={`Open actions for ${r.name}`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem onClick={() => handleToggle(r.id, r.enabled)} disabled={isPending}>
+                              <Power className={`h-3.5 w-3.5 ${r.enabled ? 'text-orange-400' : 'text-green-500'}`} />
+                              {r.enabled ? 'Disable' : 'Enable'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleClone(r.id, r.name)} disabled={isPending}>
+                              <Copy className="h-3.5 w-3.5" />
+                              Clone
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditTarget(r)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => handleDelete(r.id, r.name)}
+                              disabled={isPending}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>

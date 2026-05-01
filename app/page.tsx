@@ -1,11 +1,7 @@
 import { profiles, routers, middlewares, entryPoints, domains } from '@/lib/db'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { RoutersTab } from './_components/RoutersTab'
-import { MiddlewaresTab } from './_components/MiddlewaresTab'
-import { EntryPointsTab } from './_components/EntryPointsTab'
-import { DomainsTab } from './_components/DomainsTab'
 import { ThemeToggle } from './_components/ThemeToggle'
 import { ProfileSwitcher } from './_components/ProfileSwitcher'
+import { MainTabs } from './_components/MainTabs'
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const params = await searchParams
@@ -53,36 +49,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           <span>{entryPointRows.length} entry points</span>
         </div>
 
-        <Tabs defaultValue="routers">
-          <TabsList className="mb-4">
-            <TabsTrigger value="routers">Routers</TabsTrigger>
-            <TabsTrigger value="middlewares">Middlewares</TabsTrigger>
-            <TabsTrigger value="entrypoints">Entry Points</TabsTrigger>
-            <TabsTrigger value="domains">Domains</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="routers">
-            <RoutersTab
-              profileId={profile.id}
-              routers={routerRows}
-              entryPointNames={epNames}
-              middlewareNames={mwNames}
-              domains={domainRows}
-            />
-          </TabsContent>
-
-          <TabsContent value="middlewares">
-            <MiddlewaresTab profileId={profile.id} middlewares={middlewareRows} />
-          </TabsContent>
-
-          <TabsContent value="entrypoints">
-            <EntryPointsTab profileId={profile.id} entryPoints={entryPointRows} />
-          </TabsContent>
-
-          <TabsContent value="domains">
-            <DomainsTab profileId={profile.id} domains={domainRows} />
-          </TabsContent>
-        </Tabs>
+        <MainTabs
+          profileId={profile.id}
+          routers={routerRows}
+          middlewares={middlewareRows}
+          entryPoints={entryPointRows}
+          domains={domainRows}
+          entryPointNames={epNames}
+          middlewareNames={mwNames}
+          initialTab="routers"
+        />
       </main>
     </div>
   )

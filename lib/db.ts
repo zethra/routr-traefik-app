@@ -375,6 +375,8 @@ export const domains = {
     db.prepare('SELECT * FROM domains WHERE profile_id = ? ORDER BY domain').all(profileId) as DomainRow[],
   create: (profileId: string, domain: string, cert_resolver: string) =>
     db.prepare('INSERT INTO domains (domain, cert_resolver, profile_id) VALUES (@domain, @cert_resolver, @profile_id)').run({ domain, cert_resolver, profile_id: profileId }),
+  update: (id: string, domain: string, cert_resolver: string) =>
+    db.prepare('UPDATE domains SET domain = @domain, cert_resolver = @cert_resolver WHERE id = @id').run({ id, domain, cert_resolver }),
   delete: (id: string) => db.prepare('DELETE FROM domains WHERE id = ?').run(id),
 }
 

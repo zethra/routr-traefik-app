@@ -5,23 +5,35 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createDomain } from '@/app/_actions/domains'
+import { createDomain, updateDomain } from '@/app/_actions/domains'
 import { toast } from 'sonner'
+
+type DomainRow = {
+  id: string
+  domain: string
+  cert_resolver: string
+}
 
 type Props = {
   open: boolean
   onClose: () => void
   profileId: string
+  domain?: DomainRow
 }
 
-export function DomainDialog({ open, onClose, profileId }: Props) {
+export function DomainDialog({ open, onClose, profileId, domain: editDomain }: Props) {
+  const isEdit = !!editDomain
   const [isPending, startTransition] = useTransition()
-  const [domain, setDomain] = useState('')
-  const [certResolver, setCertResolver] = useState('')
+  const [domain, setDomain] = useState(editDomain?.domain ?? '')
+  const [certResolver, setCertResolver] = useState(editDomain?.cert_resolver ?? '')
+
+  function resetFields() {
+    setDomain(editDomain?.domain ?? '')
+    setCertResolver(editDomain?.cert_resolver ?? '')
+  }
 
   function handleClose() {
-    setDomain('')
-    setCertResolver('')
+    resetFields()
     onClose()
   }
 
@@ -30,11 +42,16 @@ export function DomainDialog({ open, onClose, profileId }: Props) {
     if (!certResolver.trim()) { toast.error('Cert resolver is required'); return }
     startTransition(async () => {
       try {
-        await createDomain(profileId, domain.trim().toLowerCase(), certResolver.trim())
-        toast.success('Domain added')
+        if (isEdit) {
+          await updateDomain(editDomain.id, domain.trim().toLowerCase(), certResolver.trim())
+          toast.success('Domain updated')
+        } else {
+          await createDomain(profileId, domain.trim().toLowerCase(), certResolver.trim())
+          toast.success('Domain added')
+        }
         handleClose()
       } catch {
-        toast.error('Failed to add domain')
+        toast.error(isEdit ? 'Failed to update domain' : 'Failed to add domain')
       }
     })
   }
@@ -43,7 +60,7 @@ export function DomainDialog({ open, onClose, profileId }: Props) {
     <Dialog open={open} onOpenChange={o => !o && handleClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Add Domain</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit Domain' : 'Add Domain'}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1">
@@ -76,7 +93,7 @@ export function DomainDialog({ open, onClose, profileId }: Props) {
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? 'Adding…' : 'Add'}
+            {isPending ? (isEdit ? 'Saving…' : 'Adding…') : (isEdit ? 'Save' : 'Add')}
           </Button>
         </DialogFooter>
       </DialogContent>

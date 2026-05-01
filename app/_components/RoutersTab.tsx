@@ -10,6 +10,7 @@ import type { SSLResult } from '@/app/_actions/ssl'
 import { toast } from 'sonner'
 import {
   ShieldCheck, ShieldAlert, ShieldX, Loader2, Lock,
+  ArrowUpDown,
   Globe, Power, Pencil, Trash2, Search, Plus, RefreshCw, Copy,
   ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MoreHorizontal, Sparkles,
 } from 'lucide-react'
@@ -55,6 +56,7 @@ type Props = {
 
 type SSLState = { status: 'checking' | 'done'; result?: SSLResult }
 type ServiceEndpoint = { url: string; weight: number }
+type SortField = 'name' | 'hostname' | 'endpoint' | 'type' | 'entryPoints' | 'middlewares' | 'tls'
 
 function extractHostname(rule: string): string | null {
   const match = rule.match(/Host\(`([^`]+)`\)/)
@@ -147,6 +149,8 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [sortField, setSortField] = useState<SortField>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   function triggerSSLCheck() {
     const checkable = routers.filter(r => extractHostname(r.rule) !== null)
@@ -215,6 +219,62 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
     )
   })
 
+  function toggleSort(field: SortField) {
+    setPage(1)
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortField(field)
+    setSortDirection('asc')
+  }
+
+  function sortValue(row: RouterRow, field: SortField): string | number {
+    const hostname = extractHostname(row.rule) ?? row.rule
+    const endpoints = parseServiceEndpoints(row.service_url)
+    const primaryEndpoint = endpoints[0]?.url ?? ''
+
+    switch (field) {
+      case 'name':
+        return row.name.toLowerCase()
+      case 'hostname':
+        return hostname.toLowerCase()
+      case 'endpoint':
+        return serviceTarget(primaryEndpoint).toLowerCase()
+      case 'type':
+        return matchDomain(hostname, domains) ? 'https' : 'http'
+      case 'entryPoints': {
+        const eps: string[] = JSON.parse(row.entry_points)
+        return eps.join(',').toLowerCase()
+      }
+      case 'middlewares': {
+        const mws: string[] = JSON.parse(row.middlewares)
+        return mws.join(',').toLowerCase()
+      }
+      case 'tls': {
+        const matched = matchDomain(hostname, domains)
+        if (!matched) return 0
+        const state = sslMap[row.id]
+        if (!state || state.status === 'checking') return 1
+        if (!state.result?.valid) return 2
+        if (state.result.daysLeft !== null && state.result.daysLeft <= 14) return 3
+        return 4
+      }
+    }
+  }
+
+  const filteredSorted = [...filtered].sort((a, b) => {
+    const av = sortValue(a, sortField)
+    const bv = sortValue(b, sortField)
+    const factor = sortDirection === 'asc' ? 1 : -1
+
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return (av - bv) * factor
+    }
+
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * factor
+  })
+
   const validRouterIds = new Set(routers.map(r => r.id))
   const validSelectedIds = selectedIds.filter(id => validRouterIds.has(id))
   const validSelectedSet = new Set(validSelectedIds)
@@ -224,9 +284,9 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const disableBulkEnable = isPending || !hasSelectedDisabled
   const disableBulkDisable = isPending || !hasSelectedEnabled
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const totalPages = Math.max(1, Math.ceil(filteredSorted.length / pageSize))
   const safePage = Math.min(page, totalPages)
-  const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const paginated = filteredSorted.slice((safePage - 1) * pageSize, safePage * pageSize)
   const paginatedIds = paginated.map(r => r.id)
   const selectedOnPage = paginatedIds.filter(id => validSelectedIds.includes(id)).length
   const allOnPageSelected = paginatedIds.length > 0 && selectedOnPage === paginatedIds.length
@@ -357,14 +417,49 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                   className="align-middle"
                 />
               </TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">Router</TableHead>
-              <TableHead className="w-[240px] pl-4 pr-1 py-3 text-xs uppercase tracking-wide text-muted-foreground">Hostname</TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">
+                <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Router
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
+              <TableHead className="w-[240px] pl-4 pr-1 py-3 text-xs uppercase tracking-wide text-muted-foreground">
+                <button type="button" onClick={() => toggleSort('hostname')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Hostname
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
               <TableHead className="w-[40px] px-0 py-3" />
-              <TableHead className="w-[240px] pl-3 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Endpoint</TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">Type</TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Entry Points</TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Middlewares</TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">TLS</TableHead>
+              <TableHead className="w-[240px] pl-3 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">
+                <button type="button" onClick={() => toggleSort('endpoint')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Endpoint
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">
+                <button type="button" onClick={() => toggleSort('type')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Type
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">
+                <button type="button" onClick={() => toggleSort('entryPoints')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Entry Points
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">
+                <button type="button" onClick={() => toggleSort('middlewares')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Middlewares
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">
+                <button type="button" onClick={() => toggleSort('tls')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  TLS
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
               <TableHead className="px-4 py-3 w-[150px]"/>
             </TableRow>
           </TableHeader>

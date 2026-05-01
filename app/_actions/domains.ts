@@ -8,6 +8,11 @@ export async function createDomain(profileId: string, domain: string, certResolv
   revalidatePath('/')
 }
 
+export async function updateDomain(id: string, domain: string, certResolver: string) {
+  domains.update(id, domain, certResolver)
+  revalidatePath('/')
+}
+
 export async function deleteDomain(id: string) {
   domains.delete(id)
   revalidatePath('/')

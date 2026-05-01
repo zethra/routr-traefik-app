@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createRouter, updateRouter } from '@/app/_actions/routers'
 import { toast } from 'sonner'
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
 
 type RouterData = {
   id: string
@@ -236,7 +236,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
 
   return (
     <Dialog open={open} onOpenChange={o => !o && handleClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Router' : 'Add Router'}</DialogTitle>
         </DialogHeader>
@@ -264,14 +264,14 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
 
             {mode === 'domain' ? (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
                   <Input
                     value={subdomain}
                     onChange={e => setSubdomain(e.target.value)}
                     placeholder="plex"
                     className="flex-1"
                   />
-                  <span className="text-muted-foreground text-sm shrink-0">.</span>
+                  <span className="hidden sm:inline text-muted-foreground text-sm shrink-0">.</span>
                   <Select value={selectedDomain} onValueChange={v => { if (v) selectDomain(v) }}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Select domain…" />
@@ -305,10 +305,10 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                 + Add
               </Button>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {serviceEndpoints.map((endpoint, index) => (
-                <div key={`svc-${index}`} className="flex items-center gap-2">
-                  <div className="flex flex-col gap-1">
+                <div key={`svc-${index}`} className="grid grid-cols-[auto_minmax(0,1fr)_4.75rem_auto] items-center gap-2">
+                  <div className="flex flex-col gap-0.5 shrink-0">
                     <Button
                       type="button"
                       variant="ghost"
@@ -337,6 +337,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     value={endpoint.url}
                     onChange={e => updateServiceEndpointUrl(index, e.target.value)}
                     placeholder="http://backend:8080"
+                    className="min-w-0"
                   />
                   <Input
                     type="number"
@@ -344,18 +345,20 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     step={1}
                     value={endpoint.weight}
                     onChange={e => updateServiceEndpointWeight(index, e.target.value)}
-                    className="w-20"
+                    className="w-full"
                     aria-label={`Weight for endpoint ${index + 1}`}
                   />
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     onClick={() => removeServiceEndpoint(index)}
                     disabled={serviceEndpoints.length === 1}
-                    className="h-9 px-2 text-xs"
+                    className="h-8 w-8 text-red-400 hover:text-destructive"
+                    title={`Remove endpoint ${index + 1}`}
+                    aria-label={`Remove endpoint ${index + 1}`}
                   >
-                    Remove
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               ))}
@@ -364,9 +367,9 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
           </div>
 
           <div className="space-y-1">
-            <Label>Entry Points</Label>
+            <Label>Ingresses</Label>
             {availableEntryPoints.length === 0 ? (
-              <p className="text-muted-foreground text-xs">No entry points defined yet.</p>
+              <p className="text-muted-foreground text-xs">No ingresses defined yet.</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {availableEntryPoints.map(ep => (
@@ -417,6 +420,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
               <Label htmlFor="r-enabled">Enabled</Label>
             </div>
           )}
+
         </div>
 
         <DialogFooter>

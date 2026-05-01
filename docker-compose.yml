@@ -1,0 +1,51 @@
+services:
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik
+      - --providers.http.endpoint=http://routr:3000/api/default?token=${ROUTR_TOKEN}
+      - --providers.http.pollInterval=5s
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/certs/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/certs
+    networks:
+      - traefik
+
+  routr:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      PROFILE_NAME: default
+      GLOBAL_TOKEN: ${ROUTR_TOKEN}
+    volumes:
+      - routr-data:/data
+    networks:
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.routr.rule=Host(`${ROUTR_DOMAIN}`)
+      - traefik.http.routers.routr.entrypoints=websecure
+      - traefik.http.routers.routr.tls.certresolver=letsencrypt
+      - traefik.http.services.routr.loadbalancer.server.port=3000
+
+networks:
+  traefik:
+    name: traefik
+
+volumes:
+  routr-data:
+  traefik-certs:

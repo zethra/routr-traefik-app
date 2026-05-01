@@ -1,65 +1,89 @@
-import Image from "next/image";
+import { profiles, routers, middlewares, entryPoints, domains } from '@/lib/db'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { RoutersTab } from './_components/RoutersTab'
+import { MiddlewaresTab } from './_components/MiddlewaresTab'
+import { EntryPointsTab } from './_components/EntryPointsTab'
+import { DomainsTab } from './_components/DomainsTab'
+import { ThemeToggle } from './_components/ThemeToggle'
+import { ProfileSwitcher } from './_components/ProfileSwitcher'
 
-export default function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+  const params = await searchParams
+  const requestedName = params.profile
+
+  const allProfiles = profiles.listWithStats()
+  const defaultName = process.env.PROFILE_NAME ?? 'default'
+  const profile = (requestedName ? profiles.getByName(requestedName) : null)
+    ?? profiles.getByName(defaultName)
+    ?? allProfiles[0]
+
+  if (!profile) {
+    return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">No profiles found.</div>
+  }
+
+  const routerRows = routers.list(profile.id)
+  const middlewareRows = middlewares.list(profile.id)
+  const entryPointRows = entryPoints.list(profile.id)
+  const domainRows = domains.list(profile.id)
+
+  const epNames = entryPointRows.map(ep => ep.name)
+  const mwNames = middlewareRows.map(mw => mw.name)
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-background">
+      <header className="border-b">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Routr</h1>
+            <p className="text-muted-foreground text-xs">Traefik dynamic config GUI</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ProfileSwitcher profiles={allProfiles} currentProfile={profile.name} />
+            <ThemeToggle />
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <span>{routerRows.length} routers</span>
+          <span>·</span>
+          <span>{middlewareRows.length} middlewares</span>
+          <span>·</span>
+          <span>{entryPointRows.length} entry points</span>
+        </div>
+
+        <Tabs defaultValue="routers">
+          <TabsList className="mb-4">
+            <TabsTrigger value="routers">Routers</TabsTrigger>
+            <TabsTrigger value="middlewares">Middlewares</TabsTrigger>
+            <TabsTrigger value="entrypoints">Entry Points</TabsTrigger>
+            <TabsTrigger value="domains">Domains</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="routers">
+            <RoutersTab
+              profileId={profile.id}
+              routers={routerRows}
+              entryPointNames={epNames}
+              middlewareNames={mwNames}
+              domains={domainRows}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="middlewares">
+            <MiddlewaresTab profileId={profile.id} middlewares={middlewareRows} />
+          </TabsContent>
+
+          <TabsContent value="entrypoints">
+            <EntryPointsTab profileId={profile.id} entryPoints={entryPointRows} />
+          </TabsContent>
+
+          <TabsContent value="domains">
+            <DomainsTab profileId={profile.id} domains={domainRows} />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
-  );
+  )
 }

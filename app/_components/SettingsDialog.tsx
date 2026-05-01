@@ -10,6 +10,7 @@ import { deleteProfile } from '@/app/_actions/profiles'
 import { Check, Copy, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ProfileWithStats } from '@/lib/db'
+import { copyToClipboard } from '@/lib/utils'
 
 type Props = {
   open: boolean
@@ -26,8 +27,12 @@ export function SettingsDialog({ open, onClose, profiles, currentProfile }: Prop
 
   const canDelete = profiles.length > 1
 
-  function copyEndpoint(p: ProfileWithStats) {
-    navigator.clipboard.writeText(`/api/${p.name}?token=${p.token}`)
+  async function copyEndpoint(p: ProfileWithStats) {
+    const ok = await copyToClipboard(`/api/${p.name}?token=${p.token}`)
+    if (!ok) {
+      toast.error('Could not copy endpoint')
+      return
+    }
     setCopiedId(p.id)
     setTimeout(() => setCopiedId(null), 2000)
   }
@@ -103,7 +108,7 @@ export function SettingsDialog({ open, onClose, profiles, currentProfile }: Prop
                     </code>
                     <button
                       className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={() => copyEndpoint(p)}
+                      onClick={() => void copyEndpoint(p)}
                       title="Copy endpoint"
                     >
                       {copiedId === p.id

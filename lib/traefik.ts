@@ -1,5 +1,25 @@
 import type { RouterRow, MiddlewareRow, DomainRow } from './db'
 
+function parseStringArray(value: string, fallback: string[] = []): string[] {
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function parseObject(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
+}
+
 function extractHostname(rule: string): string | null {
   const match = rule.match(/Host\(`([^`]+)`\)/)
   return match ? match[1] : null
@@ -21,8 +41,8 @@ export function buildTraefikConfig(
   const httpMiddlewares: Record<string, unknown> = {}
 
   for (const row of routerRows.filter(r => r.enabled)) {
-    const entryPoints: string[] = JSON.parse(row.entry_points)
-    const mws: string[] = JSON.parse(row.middlewares)
+    const entryPoints = parseStringArray(row.entry_points)
+    const mws = parseStringArray(row.middlewares)
 
     const router: Record<string, unknown> = {
       rule: row.rule,
@@ -53,7 +73,7 @@ export function buildTraefikConfig(
   }
 
   for (const row of middlewareRows.filter(m => m.enabled)) {
-    httpMiddlewares[row.name] = { [row.type]: JSON.parse(row.config) }
+    httpMiddlewares[row.name] = { [row.type]: parseObject(row.config) }
   }
 
   const http: Record<string, unknown> = {

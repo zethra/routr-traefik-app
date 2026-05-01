@@ -45,6 +45,7 @@ services:
   # ── Routr ─────────────────────────────────────
   routr:
     image: ghcr.io/zethra/routr:latest
+    user: "0:0"
     restart: unless-stopped
     environment:
       DATA_DIR: /data

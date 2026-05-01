@@ -28,7 +28,17 @@ db.exec(`
 // Seed default profile on first run
 const profileName = process.env.PROFILE_NAME ?? 'default'
 const profileToken = process.env.GLOBAL_TOKEN ?? randomBytes(16).toString('hex')
-db.prepare('INSERT OR IGNORE INTO profiles (name, token) VALUES (?, ?)').run(profileName, profileToken)
+
+const existingDefaultProfile = db.prepare('SELECT id, token FROM profiles WHERE name = ?').get(profileName) as
+  | { id: string; token: string }
+  | undefined
+
+if (!existingDefaultProfile) {
+  db.prepare('INSERT INTO profiles (name, token) VALUES (?, ?)').run(profileName, profileToken)
+} else if (process.env.GLOBAL_TOKEN && existingDefaultProfile.token !== process.env.GLOBAL_TOKEN) {
+  db.prepare('UPDATE profiles SET token = ? WHERE id = ?').run(process.env.GLOBAL_TOKEN, existingDefaultProfile.id)
+}
+
 const defaultProfile = db.prepare('SELECT id FROM profiles WHERE name = ?').get(profileName) as { id: string }
 const defaultProfileId = defaultProfile.id
 

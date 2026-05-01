@@ -4,19 +4,28 @@ import { useState, useTransition, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RouterDialog } from './RouterDialog'
-import { cloneRouter, deleteRouter, deleteRouters, toggleRouter } from '@/app/_actions/routers'
+import { cloneRouter, deleteRouter, deleteRouters, setRoutersEnabled, toggleRouter } from '@/app/_actions/routers'
 import { checkSSL } from '@/app/_actions/ssl'
 import type { SSLResult } from '@/app/_actions/ssl'
 import { toast } from 'sonner'
 import {
   ShieldCheck, ShieldAlert, ShieldX, Loader2, Lock,
   Globe, Power, Pencil, Trash2, Search, Plus, RefreshCw, Copy,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles,
 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 type RouterRow = {
   id: string
@@ -123,7 +132,8 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
     }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Initial SSL probe on first mount.
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { triggerSSLCheck() }, [])
 
   function handleDelete(id: string, name: string) {
@@ -169,11 +179,20 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
     )
   })
 
+  const validRouterIds = new Set(routers.map(r => r.id))
+  const validSelectedIds = selectedIds.filter(id => validRouterIds.has(id))
+  const validSelectedSet = new Set(validSelectedIds)
+  const selectedRouters = routers.filter(r => validSelectedSet.has(r.id))
+  const hasSelectedEnabled = selectedRouters.some(r => r.enabled === 1)
+  const hasSelectedDisabled = selectedRouters.some(r => r.enabled === 0)
+  const disableBulkEnable = isPending || !hasSelectedDisabled
+  const disableBulkDisable = isPending || !hasSelectedEnabled
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
   const paginatedIds = paginated.map(r => r.id)
-  const selectedOnPage = paginatedIds.filter(id => selectedIds.includes(id)).length
+  const selectedOnPage = paginatedIds.filter(id => validSelectedIds.includes(id)).length
   const allOnPageSelected = paginatedIds.length > 0 && selectedOnPage === paginatedIds.length
 
   function togglePageSelection(checked: boolean) {
@@ -187,23 +206,42 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   }
 
   function handleBulkDelete() {
-    if (selectedIds.length === 0) return
-    if (!confirm(`Delete ${selectedIds.length} selected router(s)?`)) return
+    if (validSelectedIds.length === 0) return
+    if (!confirm(`Delete ${validSelectedIds.length} selected router(s)?`)) return
     startTransition(async () => {
       try {
-        await deleteRouters(selectedIds)
+        await deleteRouters(validSelectedIds)
         setSelectedIds([])
-        toast.success(`Deleted ${selectedIds.length} router(s)`)
+        toast.success(`Deleted ${validSelectedIds.length} router(s)`)
       } catch {
         toast.error('Failed to delete selected routers')
       }
     })
   }
 
-  useEffect(() => {
-    const valid = new Set(routers.map(r => r.id))
-    setSelectedIds(prev => prev.filter(id => valid.has(id)))
-  }, [routers])
+  function handleBulkEnable() {
+    if (validSelectedIds.length === 0 || disableBulkEnable) return
+    startTransition(async () => {
+      try {
+        await setRoutersEnabled(validSelectedIds, true)
+        toast.success(`Enabled ${validSelectedIds.length} router(s)`)
+      } catch {
+        toast.error('Failed to enable selected routers')
+      }
+    })
+  }
+
+  function handleBulkDisable() {
+    if (validSelectedIds.length === 0 || disableBulkDisable) return
+    startTransition(async () => {
+      try {
+        await setRoutersEnabled(validSelectedIds, false)
+        toast.success(`Disabled ${validSelectedIds.length} router(s)`)
+      } catch {
+        toast.error('Failed to disable selected routers')
+      }
+    })
+  }
 
   return (
     <div className="space-y-3">
@@ -228,15 +266,38 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${sslChecking ? 'animate-spin' : ''}`} />
           SSL
         </Button>
-        {selectedIds.length > 0 && (
+        {validSelectedIds.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex h-9 items-center rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
-              {`Action (${selectedIds.length})`}
+            <DropdownMenuTrigger className="group inline-flex h-9 items-center gap-2 rounded-lg border border-blue-500/35 bg-gradient-to-r from-blue-600/15 via-cyan-500/10 to-blue-600/15 px-3 text-sm font-medium text-blue-200 shadow-sm transition-all hover:border-blue-400/60 hover:from-blue-600/20 hover:to-cyan-500/20 hover:text-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">
+              <Sparkles className="h-3.5 w-3.5 text-blue-300 transition-transform group-hover:scale-110" />
+              <span>Actions</span>
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-500/25 px-1.5 py-0.5 text-[11px] leading-none text-blue-100 ring-1 ring-blue-400/30">
+                {validSelectedIds.length}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-blue-300/90 transition-transform group-data-[popup-open]:rotate-180" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-44">
-              <DropdownMenuItem variant="destructive" onClick={handleBulkDelete}>
-                Mass Delete
-              </DropdownMenuItem>
+            <DropdownMenuContent align="start" className="w-52 rounded-xl border border-blue-500/20 bg-popover/95 p-1.5 shadow-xl backdrop-blur">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="px-2 text-[11px] uppercase tracking-[0.08em]">
+                  Bulk Operations
+                </DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleBulkEnable} disabled={disableBulkEnable}>
+                  <Power className={`h-3.5 w-3.5 ${disableBulkEnable ? 'text-muted-foreground' : 'text-emerald-500'}`} />
+                  Enable
+                  <DropdownMenuShortcut>ON</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleBulkDisable} disabled={disableBulkDisable}>
+                  <Power className={`h-3.5 w-3.5 ${disableBulkDisable ? 'text-muted-foreground' : 'text-amber-500'}`} />
+                  Disable
+                  <DropdownMenuShortcut>OFF</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={handleBulkDelete}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                  <DropdownMenuShortcut>DEL</DropdownMenuShortcut>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -261,9 +322,9 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                 />
               </TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">Router</TableHead>
-              <TableHead className="pl-4 pr-2 py-3 text-xs uppercase tracking-wide text-muted-foreground">Hostname</TableHead>
-              <TableHead className="px-1 py-3 w-[36px]" />
-              <TableHead className="pl-2 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Services</TableHead>
+              <TableHead className="w-[240px] pl-4 pr-1 py-3 text-xs uppercase tracking-wide text-muted-foreground">Hostname</TableHead>
+              <TableHead className="w-[40px] px-0 py-3" />
+              <TableHead className="w-[240px] pl-3 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Services</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">Type</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Entry Points</TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Middlewares</TableHead>
@@ -308,7 +369,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                     </TableCell>
 
                     {/* Rule */}
-                    <TableCell className="pl-4 pr-2 py-3 whitespace-nowrap">
+                    <TableCell className="w-[240px] pl-4 pr-1 py-3 whitespace-nowrap">
                       {hostname ? (
                         <a
                           href={`https://${hostname}`}
@@ -327,12 +388,12 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                     </TableCell>
 
                     {/* Arrow */}
-                    <TableCell className="px-1 py-3 text-center text-muted-foreground font-mono text-xs">
+                    <TableCell className="w-[40px] pr-1 py-3 text-center text-muted-foreground font-mono text-xs">
                       -&gt;
                     </TableCell>
 
                     {/* Services */}
-                    <TableCell className="pl-2 pr-4 py-3 whitespace-nowrap">
+                    <TableCell className="w-[240px] pl-3 pr-4 py-3 whitespace-nowrap">
                       <a
                         href={r.service_url}
                         target="_blank"

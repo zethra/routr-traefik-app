@@ -71,7 +71,6 @@ export function SettingsDialog({ open, onClose, profiles, currentProfile }: Prop
 
             {profiles.map(p => {
               const isActive = p.name === currentProfile
-              const endpoint = `/api/${p.name}?token=${p.token}`
               return (
                 <div
                   key={p.id}

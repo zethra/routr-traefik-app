@@ -1,16 +1,21 @@
 'use client'
 
 import { useTheme } from 'next-themes'
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Moon, Sun } from 'lucide-react'
 
+const noopSubscribe = () => () => {}
+
+function useIsHydrated() {
+  return useSyncExternalStore(noopSubscribe, () => true, () => false)
+}
+
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  const isHydrated = useIsHydrated()
 
-  if (!mounted) return <div className="w-9 h-9" />
+  if (!isHydrated || !resolvedTheme) return <div className="w-9 h-9" />
 
   return (
     <Button

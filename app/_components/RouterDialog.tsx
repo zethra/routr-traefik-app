@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -58,17 +58,14 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
     initialParsed ? 'domain' : hasDomains ? 'domain' : 'custom'
   )
   const [subdomain, setSubdomain] = useState(initialParsed?.subdomain ?? '')
-  const [selectedDomain, setSelectedDomain] = useState(
-    initialParsed?.domain ?? (availableDomains[0]?.domain ?? '')
-  )
-
-  useEffect(() => {
-    if (!isEdit && availableDomains.length > 0) {
+  const [selectedDomain, setSelectedDomain] = useState(() => {
+    if (initialParsed?.domain) return initialParsed.domain
+    if (!isEdit && typeof window !== 'undefined' && availableDomains.length > 0) {
       const stored = localStorage.getItem('routr:lastDomain')
-      if (stored && availableDomains.some(d => d.domain === stored)) setSelectedDomain(stored)
+      if (stored && availableDomains.some(d => d.domain === stored)) return stored
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    return availableDomains[0]?.domain ?? ''
+  })
   const [customRule, setCustomRule] = useState(router?.rule ?? '')
 
   const [name, setName] = useState(router?.name ?? '')

@@ -52,7 +52,7 @@ export function ProfileDialog({ open, onClose, onCreated }: Props) {
         {createdToken ? (
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Profile <span className="font-medium text-foreground">{createdName}</span> created. Save this token — it won't be shown again.
+              Profile <span className="font-medium text-foreground">{createdName}</span> created. Save this token - it will not be shown again.
             </p>
             <div className="space-y-1">
               <Label>API Token</Label>

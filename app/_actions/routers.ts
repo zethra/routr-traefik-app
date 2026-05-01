@@ -76,3 +76,8 @@ export async function toggleRouter(id: string, enabled: boolean) {
   routers.toggleEnabled(id, enabled)
   revalidatePath('/')
 }
+
+export async function setRoutersEnabled(ids: string[], enabled: boolean) {
+  for (const id of ids) routers.toggleEnabled(id, enabled)
+  revalidatePath('/')
+}

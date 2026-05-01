@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { MiddlewareDialog } from './MiddlewareDialog'
 import { deleteMiddleware, toggleMiddleware } from '@/app/_actions/middlewares'
 import { toast } from 'sonner'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 type MiddlewareRow = {
   id: string
@@ -53,30 +54,51 @@ export function MiddlewaresTab({ profileId, middlewares }: Props) {
       {middlewares.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No middlewares yet.</p>
       ) : (
-        <div className="space-y-2">
-          {middlewares.map(m => (
-            <div key={m.id} className="flex items-start gap-3 rounded-lg border p-4">
-              <Switch
-                checked={m.enabled === 1}
-                onCheckedChange={() => handleToggle(m.id, m.enabled)}
-                disabled={isPending}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-sm">{m.name}</span>
-                  <Badge variant="outline" className="text-xs">{m.type}</Badge>
-                  {!m.enabled && <Badge variant="secondary" className="text-xs">disabled</Badge>}
-                </div>
-                <pre className="text-muted-foreground text-xs mt-1 font-mono truncate max-w-sm">
-                  {m.config}
-                </pre>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                <Button size="sm" variant="outline" onClick={() => setEditTarget(m)}>Edit</Button>
-                <Button size="sm" variant="destructive" onClick={() => handleDelete(m.id, m.name)} disabled={isPending}>Delete</Button>
-              </div>
-            </div>
-          ))}
+        <div className="rounded-lg border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[90px]">Enabled</TableHead>
+                <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[220px]">Name</TableHead>
+                <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[140px]">Type</TableHead>
+                <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Config</TableHead>
+                <TableHead className="px-4 py-3 w-[150px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {middlewares.map(m => (
+                <TableRow key={m.id} className={!m.enabled ? 'opacity-60' : ''}>
+                  <TableCell className="px-4 py-3">
+                    <Switch
+                      checked={m.enabled === 1}
+                      onCheckedChange={() => handleToggle(m.id, m.enabled)}
+                      disabled={isPending}
+                    />
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{m.name}</span>
+                      {!m.enabled && <Badge variant="secondary" className="text-xs">disabled</Badge>}
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <Badge variant="outline" className="text-xs">{m.type}</Badge>
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <pre className="text-muted-foreground text-xs font-mono truncate max-w-sm">
+                      {m.config}
+                    </pre>
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setEditTarget(m)}>Edit</Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(m.id, m.name)} disabled={isPending}>Delete</Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 

@@ -51,6 +51,7 @@ services:
       DATA_DIR: /data
       PROFILE_NAME: default
       GLOBAL_TOKEN: ${ROUTR_TOKEN}
+      SSL_CHECK_INTERNAL_HOST: traefik
     volumes:
       - /srv/routr:/data
     networks:

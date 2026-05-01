@@ -9,7 +9,7 @@ export type SSLResult = {
   error?: string
 }
 
-export async function checkSSL(hostname: string): Promise<SSLResult> {
+function probeTLS(host: string, servername: string, port: number): Promise<SSLResult> {
   return new Promise((resolve) => {
     let settled = false
     let socket: tls.TLSSocket | null = null
@@ -27,7 +27,7 @@ export async function checkSSL(hostname: string): Promise<SSLResult> {
     }, 5000)
 
     socket = tls.connect(
-      { host: hostname, port: 443, servername: hostname, rejectUnauthorized: false },
+      { host, port, servername, rejectUnauthorized: false },
       () => {
         const cert = socket!.getPeerCertificate()
         const authorized = socket!.authorized
@@ -52,4 +52,23 @@ export async function checkSSL(hostname: string): Promise<SSLResult> {
       settle({ valid: false, daysLeft: null, issuer: null, error: err.message })
     })
   })
+}
+
+export async function checkSSL(hostname: string): Promise<SSLResult> {
+  const port = Number(process.env.SSL_CHECK_PORT ?? '443') || 443
+  const internalHost = process.env.SSL_CHECK_INTERNAL_HOST?.trim()
+
+  // First try external hostname. If unreachable in Docker/hairpin setups, fall back to internal Traefik host.
+  const primary = await probeTLS(hostname, hostname, port)
+  if (primary.valid || !internalHost) return primary
+
+  const fallback = await probeTLS(internalHost, hostname, port)
+  if (fallback.valid) return fallback
+
+  return {
+    ...primary,
+    error: [primary.error, `fallback(${internalHost}): ${fallback.error ?? 'unknown'}`]
+      .filter(Boolean)
+      .join(' | '),
+  }
 }

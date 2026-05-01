@@ -4,16 +4,19 @@ import { useState, useTransition, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RouterDialog } from './RouterDialog'
-import { deleteRouter, toggleRouter } from '@/app/_actions/routers'
+import { cloneRouter, deleteRouter, deleteRouters, toggleRouter } from '@/app/_actions/routers'
 import { checkSSL } from '@/app/_actions/ssl'
 import type { SSLResult } from '@/app/_actions/ssl'
 import { toast } from 'sonner'
 import {
   ShieldCheck, ShieldAlert, ShieldX, Loader2, Lock,
-  Globe, Power, Pencil, Trash2, Search, Plus, RefreshCw,
+  Globe, Power, Pencil, Trash2, Search, Plus, RefreshCw, Copy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 type RouterRow = {
   id: string
@@ -78,6 +81,18 @@ function matchDomain(hostname: string, domainRows: DomainRow[]): DomainRow | nul
   return domainRows.find(d => hostname === d.domain || hostname.endsWith(`.${d.domain}`)) ?? null
 }
 
+function serviceTarget(serviceUrl: string): string {
+  try {
+    return new URL(serviceUrl).host
+  } catch {
+    return serviceUrl
+      .replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '')
+      .split('/')[0]
+      .split('?')[0]
+      .split('#')[0]
+  }
+}
+
 export function RoutersTab({ profileId, routers, entryPointNames, middlewareNames, domains }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<RouterRow | null>(null)
@@ -87,6 +102,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   function triggerSSLCheck() {
     const checkable = routers.filter(r => extractHostname(r.rule) !== null)
@@ -126,6 +142,24 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
     startTransition(async () => { await toggleRouter(id, current === 0) })
   }
 
+  function handleClone(routerId: string, routerName: string) {
+    startTransition(async () => {
+      try {
+        await cloneRouter(profileId, routerId)
+        toast.success(`Cloned "${routerName}"`)
+      } catch {
+        toast.error('Failed to clone router')
+      }
+    })
+  }
+
+  function toggleSelection(id: string, checked: boolean) {
+    setSelectedIds(prev => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id]
+      return prev.filter(x => x !== id)
+    })
+  }
+
   const filtered = routers.filter(r => {
     const q = search.toLowerCase()
     return (
@@ -138,6 +172,38 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const paginated = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const paginatedIds = paginated.map(r => r.id)
+  const selectedOnPage = paginatedIds.filter(id => selectedIds.includes(id)).length
+  const allOnPageSelected = paginatedIds.length > 0 && selectedOnPage === paginatedIds.length
+
+  function togglePageSelection(checked: boolean) {
+    setSelectedIds(prev => {
+      if (checked) {
+        return Array.from(new Set([...prev, ...paginatedIds]))
+      }
+      const toRemove = new Set(paginatedIds)
+      return prev.filter(id => !toRemove.has(id))
+    })
+  }
+
+  function handleBulkDelete() {
+    if (selectedIds.length === 0) return
+    if (!confirm(`Delete ${selectedIds.length} selected router(s)?`)) return
+    startTransition(async () => {
+      try {
+        await deleteRouters(selectedIds)
+        setSelectedIds([])
+        toast.success(`Deleted ${selectedIds.length} router(s)`)
+      } catch {
+        toast.error('Failed to delete selected routers')
+      }
+    })
+  }
+
+  useEffect(() => {
+    const valid = new Set(routers.map(r => r.id))
+    setSelectedIds(prev => prev.filter(id => valid.has(id)))
+  }, [routers])
 
   return (
     <div className="space-y-3">
@@ -162,6 +228,18 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${sslChecking ? 'animate-spin' : ''}`} />
           SSL
         </Button>
+        {selectedIds.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-9 items-center rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
+              {`Action (${selectedIds.length})`}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuItem variant="destructive" onClick={handleBulkDelete}>
+                Mass Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <div className="flex-1" />
         <Button size="sm" className="h-9 gap-1.5" onClick={() => setAddOpen(true)}>
           <Plus className="h-3.5 w-3.5" />
@@ -171,54 +249,111 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
 
       {/* Table */}
       <div className="rounded-lg border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40">
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide w-[180px]">Name</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide w-[100px]">Type</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide w-[150px]">Entry Points</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide w-[150px]">Middlewares</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide">Rule</th>
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wide w-[180px]">TLS</th>
-              <th className="px-4 py-3 w-[110px]" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead className="px-4 py-3 w-[44px]">
+                <Checkbox
+                  checked={allOnPageSelected}
+                  onCheckedChange={checked => togglePageSelection(checked === true)}
+                  aria-label="Select all routers on this page"
+                  className="align-middle"
+                />
+              </TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">Router</TableHead>
+              <TableHead className="pl-4 pr-2 py-3 text-xs uppercase tracking-wide text-muted-foreground">Hostname</TableHead>
+              <TableHead className="px-1 py-3 w-[36px]" />
+              <TableHead className="pl-2 pr-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Services</TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">Type</TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Entry Points</TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Middlewares</TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">TLS</TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {paginated.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+              <TableRow>
+                <TableCell colSpan={10} className="text-center py-12 text-muted-foreground text-sm">
                   {search ? 'No routers match your search.' : 'No routers yet.'}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               paginated.map((r, i) => {
                 const eps: string[] = JSON.parse(r.entry_points)
                 const mws: string[] = JSON.parse(r.middlewares)
                 const hostname = extractHostname(r.rule)
                 const isLast = i === paginated.length - 1
+                const isSelected = selectedIds.includes(r.id)
                 return (
-                  <tr
+                  <TableRow
                     key={r.id}
                     className={`hover:bg-muted/30 transition-colors ${!isLast ? 'border-b' : ''} ${!r.enabled ? 'opacity-50' : ''}`}
                   >
+                    <TableCell className="px-4 py-3">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={checked => toggleSelection(r.id, checked === true)}
+                        aria-label={`Select router ${r.name}`}
+                        className="align-middle"
+                      />
+                    </TableCell>
+
                     {/* Name */}
-                    <td className="px-4 py-3">
+                    <TableCell className="px-4 py-3">
                       <span className="font-medium">{r.name}</span>
                       {r.priority != null && (
                         <span className="ml-1.5 text-xs text-muted-foreground">p{r.priority}</span>
                       )}
-                    </td>
+                    </TableCell>
+
+                    {/* Rule */}
+                    <TableCell className="pl-4 pr-2 py-3 whitespace-nowrap">
+                      {hostname ? (
+                        <a
+                          href={`https://${hostname}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
+                          title={`Open https://${hostname}`}
+                        >
+                          {hostname}
+                        </a>
+                      ) : (
+                        <span className="text-blue-400 font-mono text-xs">
+                          {r.rule}
+                        </span>
+                      )}
+                    </TableCell>
+
+                    {/* Arrow */}
+                    <TableCell className="px-1 py-3 text-center text-muted-foreground font-mono text-xs">
+                      -&gt;
+                    </TableCell>
+
+                    {/* Services */}
+                    <TableCell className="pl-2 pr-4 py-3 whitespace-nowrap">
+                      <a
+                        href={r.service_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
+                        title={`Open ${r.service_url}`}
+                      >
+                        {serviceTarget(r.service_url)}
+                      </a>
+                    </TableCell>
 
                     {/* Type */}
-                    <td className="px-4 py-3">
+                    <TableCell className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-border bg-muted text-foreground">
                         <Globe className="h-3 w-3" />
                         {matchDomain(hostname ?? '', domains) ? 'HTTPS' : 'HTTP'}
                       </span>
-                    </td>
+                    </TableCell>
 
                     {/* Entry Points */}
-                    <td className="px-4 py-3">
+                    <TableCell className="px-4 py-3">
                       {eps.length === 0 ? (
                         <Pill label="None" variant="muted" />
                       ) : (
@@ -226,10 +361,10 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           {eps.map(ep => <Pill key={ep} label={ep} />)}
                         </div>
                       )}
-                    </td>
+                    </TableCell>
 
                     {/* Middlewares */}
-                    <td className="px-4 py-3">
+                    <TableCell className="px-4 py-3">
                       {mws.length === 0 ? (
                         <Pill label="None" variant="muted" />
                       ) : (
@@ -237,37 +372,31 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           {mws.map(mw => <Pill key={mw} label={mw} />)}
                         </div>
                       )}
-                    </td>
-
-                    {/* Rule */}
-                    <td className="px-4 py-3">
-                      <span className="text-blue-400 font-mono text-xs">
-                        {hostname ?? r.rule}
-                      </span>
-                    </td>
+                    </TableCell>
 
                     {/* TLS */}
-                    <td className="px-4 py-3">
+                    <TableCell className="px-4 py-3">
                       {(() => {
                         const matched = hostname ? matchDomain(hostname, domains) : null
                         if (matched) return (
-                          <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
                             <Lock className="h-3 w-3" />
-                            {matched.cert_resolver}
+                            Encrypted
                             <SSLIcon state={sslMap[r.id]} />
                           </span>
                         )
                         if (hostname) return (
-                          <span className="inline-flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                            <Lock className="h-3 w-3" />
                             <SSLIcon state={sslMap[r.id]} />
                           </span>
                         )
                         return null
                       })()}
-                    </td>
+                    </TableCell>
 
                     {/* Actions */}
-                    <td className="px-4 py-3">
+                    <TableCell className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleToggle(r.id, r.enabled)}
@@ -278,8 +407,17 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           <Power className="h-4 w-4" />
                         </button>
                         <button
+                          onClick={() => handleClone(r.id, r.name)}
+                          disabled={isPending}
+                          className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          title="Clone"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => setEditTarget(r)}
                           className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          title="Edit"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -287,17 +425,18 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           onClick={() => handleDelete(r.id, r.name)}
                           disabled={isPending}
                           className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"
+                          title="Delete"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )
               })
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Footer */}

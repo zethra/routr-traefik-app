@@ -25,6 +25,12 @@ type RouterData = {
 type Domain = { id: string; domain: string }
 type ServiceEndpoint = { url: string; weight: number }
 
+type ParsedDomainRule = {
+  subdomain: string
+  domain: string
+  aliases: string[]
+}
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -35,16 +41,35 @@ type Props = {
   availableDomains: Domain[]
 }
 
-function parseRuleIntoDomain(rule: string, domains: Domain[]): { subdomain: string; domain: string } | null {
-  const match = rule.match(/Host\(`([^`]+)`\)/)
-  if (!match) return null
-  const hostname = match[1]
+function parseHostnamesFromRule(rule: string): string[] {
+  const match = rule.match(/Host\((.*)\)/)
+  if (!match) return []
+  return Array.from(match[1].matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
+}
+
+function toSubdomain(hostname: string, domain: string): string | null {
+  if (hostname === domain) return ''
+  if (hostname.endsWith(`.${domain}`)) return hostname.slice(0, -(domain.length + 1))
+  return null
+}
+
+function parseRuleIntoDomain(rule: string, domains: Domain[]): ParsedDomainRule | null {
+  const hostnames = parseHostnamesFromRule(rule)
+  const primaryHostname = hostnames[0]
+  if (!primaryHostname) return null
+
   for (const d of domains) {
-    if (hostname === d.domain) return { subdomain: '', domain: d.domain }
-    if (hostname.endsWith(`.${d.domain}`)) {
-      return { subdomain: hostname.slice(0, -(d.domain.length + 1)), domain: d.domain }
-    }
+    const primarySubdomain = toSubdomain(primaryHostname, d.domain)
+    if (primarySubdomain === null) continue
+
+    const aliases = hostnames
+      .slice(1)
+      .map(hostname => toSubdomain(hostname, d.domain))
+      .filter((subdomain): subdomain is string => subdomain !== null && subdomain.length > 0)
+
+    return { subdomain: primarySubdomain, domain: d.domain, aliases }
   }
+
   return null
 }
 
@@ -105,6 +130,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
     initialParsed ? 'domain' : hasDomains ? 'domain' : 'custom'
   )
   const [subdomain, setSubdomain] = useState(initialParsed?.subdomain ?? '')
+  const [aliases, setAliases] = useState<string[]>(initialParsed?.aliases ?? [])
   const [selectedDomain, setSelectedDomain] = useState(() => {
     if (initialParsed?.domain) return initialParsed.domain
     if (!isEdit && typeof window !== 'undefined' && availableDomains.length > 0) {
@@ -131,7 +157,16 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
   const computedHostname = selectedDomain
     ? subdomain.trim() ? `${subdomain.trim()}.${selectedDomain}` : selectedDomain
     : ''
-  const computedRule = computedHostname ? `Host(\`${computedHostname}\`)` : ''
+  const computedAliasHostnames = selectedDomain
+    ? aliases
+      .map(alias => alias.trim())
+      .filter(Boolean)
+      .map(alias => `${alias}.${selectedDomain}`)
+    : []
+  const computedHostnames = Array.from(new Set([computedHostname, ...computedAliasHostnames].filter(Boolean)))
+  const computedRule = computedHostnames.length > 0
+    ? `Host(${computedHostnames.map(hostname => `\`${hostname}\``).join(', ')})`
+    : ''
 
   const activeRule = mode === 'domain' ? computedRule : customRule
 
@@ -148,7 +183,11 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
     if (next === 'custom' && mode === 'domain') setCustomRule(computedRule)
     if (next === 'domain' && mode === 'custom') {
       const parsed = parseRuleIntoDomain(customRule, availableDomains)
-      if (parsed) { setSubdomain(parsed.subdomain); selectDomain(parsed.domain) }
+      if (parsed) {
+        setSubdomain(parsed.subdomain)
+        setAliases(parsed.aliases)
+        selectDomain(parsed.domain)
+      }
     }
     setMode(next)
   }
@@ -157,6 +196,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
     if (!isEdit) {
       setName(''); setServiceEndpoints([{ url: '', weight: 1 }])
       setSubdomain('')
+      setAliases([])
       const stored = localStorage.getItem('routr:lastDomain')
       setSelectedDomain((stored && availableDomains.some(d => d.domain === stored)) ? stored : (availableDomains[0]?.domain ?? ''))
       setCustomRule('')
@@ -197,6 +237,18 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
       next.splice(nextIndex, 0, item)
       return next
     })
+  }
+
+  function updateAlias(index: number, value: string) {
+    setAliases(prev => prev.map((item, i) => (i === index ? value : item)))
+  }
+
+  function addAlias() {
+    setAliases(prev => [...prev, ''])
+  }
+
+  function removeAlias(index: number) {
+    setAliases(prev => prev.filter((_, i) => i !== index))
   }
 
   function handleSubmit() {
@@ -288,6 +340,42 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     → Host(`{computedHostname}`)
                   </p>
                 )}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-muted-foreground">Aliases</Label>
+                    <Button type="button" variant="ghost" size="sm" onClick={addAlias} className="h-7 px-2 text-xs">
+                      + Add alias
+                    </Button>
+                  </div>
+                  {aliases.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {aliases.map((alias, index) => (
+                        <div key={`alias-${index}`} className="flex items-center gap-2">
+                          <Input
+                            value={alias}
+                            onChange={e => updateAlias(index, e.target.value)}
+                            placeholder="grafana"
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-muted-foreground shrink-0">.{selectedDomain}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeAlias(index)}
+                            className="h-8 w-8 text-red-400 hover:text-destructive"
+                            aria-label={`Remove alias ${index + 1}`}
+                            title={`Remove alias ${index + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No aliases configured.</p>
+                  )}
+                </div>
               </div>
             ) : (
               <Input

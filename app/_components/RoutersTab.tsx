@@ -58,9 +58,14 @@ type SSLState = { status: 'checking' | 'done'; result?: SSLResult }
 type ServiceEndpoint = { url: string; weight: number }
 type SortField = 'name' | 'hostname' | 'endpoint' | 'type' | 'entryPoints' | 'middlewares' | 'tls'
 
+function parseHostnames(rule: string): string[] {
+  const match = rule.match(/Host\((.*)\)/)
+  if (!match) return []
+  return Array.from(match[1].matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
+}
+
 function extractHostname(rule: string): string | null {
-  const match = rule.match(/Host\(`([^`]+)`\)/)
-  return match ? match[1] : null
+  return parseHostnames(rule)[0] ?? null
 }
 
 function Pill({ label, variant = 'default' }: { label: string; variant?: 'default' | 'blue' | 'muted' }) {
@@ -212,9 +217,10 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const filtered = routers.filter(r => {
     const q = search.toLowerCase()
     const endpoints = parseServiceEndpoints(r.service_url)
+    const hostnames = parseHostnames(r.rule)
     return (
       r.name.toLowerCase().includes(q) ||
-      (extractHostname(r.rule) ?? '').toLowerCase().includes(q) ||
+      hostnames.some(hostname => hostname.toLowerCase().includes(q)) ||
       endpoints.some(endpoint => endpoint.url.toLowerCase().includes(q))
     )
   })
@@ -475,6 +481,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                 const eps: string[] = JSON.parse(r.entry_points)
                 const mws: string[] = JSON.parse(r.middlewares)
                 const hostname = extractHostname(r.rule)
+                const aliases = parseHostnames(r.rule).slice(1)
                 const endpoints = parseServiceEndpoints(r.service_url)
                 const primaryEndpoint = endpoints[0]
                 const isLast = i === paginated.length - 1
@@ -501,15 +508,25 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                     {/* Rule */}
                     <TableCell className="w-[240px] pl-4 pr-1 py-3 whitespace-nowrap">
                       {hostname ? (
-                        <a
-                          href={`https://${hostname}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
-                          title={`Open https://${hostname}`}
-                        >
-                          {hostname}
-                        </a>
+                        <div className="inline-flex items-center gap-1.5">
+                          <a
+                            href={`https://${hostname}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
+                            title={`Open https://${hostname}`}
+                          >
+                            {hostname}
+                          </a>
+                          {aliases.length > 0 && (
+                            <span
+                              className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                              title={aliases.join('\n')}
+                            >
+                              +{aliases.length}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-blue-400 font-mono text-xs">
                           {r.rule}

@@ -30,9 +30,10 @@ type Props = {
   routers: RouterRow[]
 }
 
-function extractHostname(rule: string): string | null {
-  const match = rule.match(/Host\(`([^`]+)`\)/)
-  return match ? match[1] : null
+function extractHostnames(rule: string): string[] {
+  const match = rule.match(/Host\((.*)\)/)
+  if (!match) return []
+  return Array.from(match[1].matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
 }
 
 function formatCreated(value: string): string {
@@ -50,13 +51,13 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
 
   const domainStats = domains.map(domainRow => {
     const matchedHosts = routers
-      .map(router => extractHostname(router.rule))
-      .filter((host): host is string => !!host && (host === domainRow.domain || host.endsWith(`.${domainRow.domain}`)))
+      .flatMap(router => extractHostnames(router.rule))
+      .filter(host => host === domainRow.domain || host.endsWith(`.${domainRow.domain}`))
 
     const uniqueHosts = Array.from(new Set(matchedHosts))
     const matchedRoutes = routers.filter(router => {
-      const host = extractHostname(router.rule)
-      return !!host && (host === domainRow.domain || host.endsWith(`.${domainRow.domain}`))
+      const hosts = extractHostnames(router.rule)
+      return hosts.some(host => host === domainRow.domain || host.endsWith(`.${domainRow.domain}`))
     })
 
     const activeRoutes = matchedRoutes.filter(router => router.enabled === 1).length

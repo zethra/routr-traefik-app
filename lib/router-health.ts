@@ -1,5 +1,6 @@
 import { profiles, routerHealth, routers } from './db'
-import { Agent } from 'undici'
+import http from 'node:http'
+import https from 'node:https'
 
 type ServiceEndpoint = { url: string; weight: number }
 
@@ -25,9 +26,6 @@ if (!monitorState.__routrHealthMonitorState) {
 }
 
 const state = monitorState.__routrHealthMonitorState
-const insecureHttpsAgent = new Agent({
-  connect: { rejectUnauthorized: false },
-})
 
 function parseServiceEndpoints(value: string): ServiceEndpoint[] {
   const trimmed = value.trim()
@@ -60,36 +58,66 @@ function nowSqlString(): string {
 }
 
 async function checkEndpoint(url: string): Promise<EndpointCheckResult> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 5000)
   const start = Date.now()
   const isHttps = url.trim().toLowerCase().startsWith('https://')
 
-  async function doFetch(insecureTls: boolean) {
-    return fetch(url, {
-      method: 'GET',
-      cache: 'no-store',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'user-agent': 'routr-health/1.0' },
-      ...(insecureTls ? { dispatcher: insecureHttpsAgent } : {}),
-    } as RequestInit & { dispatcher?: Agent })
+  function probeEndpoint(insecureTls: boolean): Promise<{ statusCode: number | null; error: string | null }> {
+    return new Promise((resolve) => {
+      let parsedUrl: URL
+      try {
+        parsedUrl = new URL(url)
+      } catch {
+        resolve({ statusCode: null, error: 'Invalid URL' })
+        return
+      }
+
+      const isHttpsUrl = parsedUrl.protocol === 'https:'
+      const client = isHttpsUrl ? https : http
+
+      const req = client.request(
+        {
+          protocol: parsedUrl.protocol,
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port ? Number(parsedUrl.port) : undefined,
+          path: `${parsedUrl.pathname}${parsedUrl.search}`,
+          method: 'GET',
+          headers: { 'user-agent': 'routr-health/1.0' },
+          ...(isHttpsUrl ? { rejectUnauthorized: !insecureTls } : {}),
+        },
+        (res) => {
+          res.resume()
+          resolve({ statusCode: res.statusCode ?? null, error: null })
+        }
+      )
+
+      req.setTimeout(5000, () => {
+        req.destroy(new Error('Timeout'))
+      })
+
+      req.on('error', (error) => {
+        resolve({ statusCode: null, error: error.message })
+      })
+
+      req.end()
+    })
   }
 
   try {
-    let response: Response
-    try {
-      response = await doFetch(false)
-    } catch (error) {
-      if (!isHttps) throw error
-      response = await doFetch(true)
+    let result = await probeEndpoint(false)
+    if (result.error && isHttps) {
+      result = await probeEndpoint(true)
     }
+
+    if (result.error) throw new Error(result.error)
+
+    const statusCode = result.statusCode ?? 0
+    const up = statusCode > 0 && statusCode < 500
 
     return {
       url,
-      up: response.status < 500,
+      up,
       latencyMs: Date.now() - start,
-      error: response.status < 500 ? null : `HTTP ${response.status}`,
+      error: up ? null : `HTTP ${statusCode}`,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Request failed'
@@ -99,8 +127,6 @@ async function checkEndpoint(url: string): Promise<EndpointCheckResult> {
       latencyMs: Date.now() - start,
       error: message,
     }
-  } finally {
-    clearTimeout(timer)
   }
 }
 

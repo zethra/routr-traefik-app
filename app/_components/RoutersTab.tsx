@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+import { useState, useTransition, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RouterDialog } from './RouterDialog'
@@ -191,6 +191,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [healthMap, setHealthMap] = useState<Record<string, HealthStatus>>({})
+  const [healthRefreshing, setHealthRefreshing] = useState(false)
   const hasHydratedHealthRef = useRef(false)
   const seenHealthEventIdsRef = useRef<Set<string>>(new Set())
 
@@ -222,42 +223,47 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { triggerSSLCheck() }, [])
 
+  const refreshHealth = useCallback(async (force = false) => {
+    const endpoint = force ? `/api/health/${profileId}?force=1` : `/api/health/${profileId}`
+    const response = await fetch(endpoint, { cache: 'no-store' })
+    if (!response.ok) return
+
+    const payload = await response.json() as { statuses: HealthStatus[]; events: HealthEvent[] }
+
+    const nextHealthMap = Object.fromEntries(payload.statuses.map(status => [status.routerId, status]))
+    setHealthMap(nextHealthMap)
+
+    const orderedEvents = [...payload.events].reverse()
+
+    if (!hasHydratedHealthRef.current) {
+      for (const event of orderedEvents) seenHealthEventIdsRef.current.add(event.id)
+      hasHydratedHealthRef.current = true
+      return
+    }
+
+    for (const event of orderedEvents) {
+      if (seenHealthEventIdsRef.current.has(event.id)) continue
+      seenHealthEventIdsRef.current.add(event.id)
+
+      const router = routers.find(r => r.id === event.routerId)
+      const routerName = router?.name ?? 'Router'
+      const duration = formatDurationSince(event.createdAt)
+
+      if (event.toUp) {
+        toast.success(`${routerName} recovered`, { description: `State changed ${duration} ago` })
+      } else {
+        toast.error(`${routerName} is down`, { description: `State changed ${duration} ago` })
+      }
+    }
+  }, [profileId, routers])
+
   useEffect(() => {
     let cancelled = false
 
     async function pollHealth() {
       try {
-        const response = await fetch(`/api/health/${profileId}`, { cache: 'no-store' })
-        if (!response.ok) return
-
-        const payload = await response.json() as { statuses: HealthStatus[]; events: HealthEvent[] }
         if (cancelled) return
-
-        const nextHealthMap = Object.fromEntries(payload.statuses.map(status => [status.routerId, status]))
-        setHealthMap(nextHealthMap)
-
-        const orderedEvents = [...payload.events].reverse()
-
-        if (!hasHydratedHealthRef.current) {
-          for (const event of orderedEvents) seenHealthEventIdsRef.current.add(event.id)
-          hasHydratedHealthRef.current = true
-          return
-        }
-
-        for (const event of orderedEvents) {
-          if (seenHealthEventIdsRef.current.has(event.id)) continue
-          seenHealthEventIdsRef.current.add(event.id)
-
-          const router = routers.find(r => r.id === event.routerId)
-          const routerName = router?.name ?? 'Router'
-          const duration = formatDurationSince(event.createdAt)
-
-          if (event.toUp) {
-            toast.success(`${routerName} recovered`, { description: `State changed ${duration} ago` })
-          } else {
-            toast.error(`${routerName} is down`, { description: `State changed ${duration} ago` })
-          }
-        }
+        await refreshHealth(false)
       } catch {
         // Ignore transient polling errors.
       }
@@ -270,7 +276,19 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
       cancelled = true
       clearInterval(interval)
     }
-  }, [profileId, routers])
+  }, [refreshHealth])
+
+  function handleRefreshAll() {
+    triggerSSLCheck()
+    setHealthRefreshing(true)
+    refreshHealth(true)
+      .catch(() => {
+        toast.error('Failed to refresh health checks')
+      })
+      .finally(() => {
+        setHealthRefreshing(false)
+      })
+  }
 
   function handleDelete(id: string, name: string) {
     if (!confirm(`Delete router "${name}"?`)) return
@@ -458,13 +476,14 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
         </div>
         <Button
           variant="ghost"
-          size="sm"
-          onClick={triggerSSLCheck}
-          disabled={sslChecking}
-          className="h-9 rounded-xl border border-border/70 bg-background/70 text-muted-foreground hover:text-foreground"
+          size="icon"
+          onClick={handleRefreshAll}
+          disabled={sslChecking || healthRefreshing}
+          className="h-9 w-9 rounded-xl border border-border/70 bg-background/70 text-muted-foreground hover:text-foreground"
+          title="Refresh SSL and health"
+          aria-label="Refresh SSL and health"
         >
-          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${sslChecking ? 'animate-spin' : ''}`} />
-          SSL
+          <RefreshCw className={`h-3.5 w-3.5 ${(sslChecking || healthRefreshing) ? 'animate-spin' : ''}`} />
         </Button>
         {validSelectedIds.length > 0 && (
           <DropdownMenu>
@@ -750,7 +769,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                               </span>
                               <div className="h-1.5 w-full rounded-full bg-muted/80 overflow-hidden">
                                 <div
-                                  className="h-full rounded-full bg-foreground/85"
+                                  className="h-full rounded-full bg-white"
                                   style={{ width: `${Math.max(6, uptime)}%` }}
                                 />
                               </div>
@@ -769,7 +788,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                             </span>
                             <div className="h-1.5 w-full rounded-full bg-muted/80 overflow-hidden">
                               <div
-                                className="h-full rounded-full bg-foreground/35"
+                                className="h-full rounded-full bg-white"
                                 style={{ width: `${Math.max(6, uptime)}%` }}
                               />
                             </div>

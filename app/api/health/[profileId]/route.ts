@@ -1,7 +1,7 @@
 import { profiles, routerHealth } from '@/lib/db'
 import { ensureHealthMonitorStarted, runProfileHealthChecks } from '@/lib/router-health'
 
-export async function GET(_req: Request, ctx: RouteContext<'/api/health/[profileId]'>) {
+export async function GET(req: Request, ctx: RouteContext<'/api/health/[profileId]'>) {
   const { profileId } = await ctx.params
   const profile = profiles.get(profileId)
 
@@ -10,7 +10,10 @@ export async function GET(_req: Request, ctx: RouteContext<'/api/health/[profile
   }
 
   ensureHealthMonitorStarted()
-  await runProfileHealthChecks(profile.id)
+  const force = new URL(req.url).searchParams.get('force') === '1'
+  if (force) {
+    await runProfileHealthChecks(profile.id)
+  }
 
   const statusRows = routerHealth.listStatus(profile.id)
   const uptimeRows = routerHealth.listUptimePercent(profile.id, 24)

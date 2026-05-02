@@ -2,8 +2,11 @@ import { profiles, routers, middlewares, entryPoints, domains } from '@/lib/db'
 import { ThemeToggle } from './_components/ThemeToggle'
 import { ProfileSwitcher } from './_components/ProfileSwitcher'
 import { MainTabs } from './_components/MainTabs'
+import { ensureHealthMonitorStarted } from '@/lib/router-health'
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+  ensureHealthMonitorStarted()
+
   const params = await searchParams
   const requestedName = params.profile
 

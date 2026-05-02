@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useEffect } from 'react'
+import { useState, useTransition, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RouterDialog } from './RouterDialog'
@@ -56,7 +56,28 @@ type Props = {
 
 type SSLState = { status: 'checking' | 'done'; result?: SSLResult }
 type ServiceEndpoint = { url: string; weight: number }
-type SortField = 'name' | 'hostname' | 'endpoint' | 'type' | 'entryPoints' | 'middlewares' | 'tls'
+type SortField = 'name' | 'hostname' | 'endpoint' | 'type' | 'tls' | 'health'
+
+type HealthStatus = {
+  routerId: string
+  isUp: boolean
+  upEndpoints: number
+  totalEndpoints: number
+  consecutiveFailures: number
+  sinceAt: string
+  lastCheckedAt: string
+  lastError: string | null
+  uptime24h: number
+}
+
+type HealthEvent = {
+  id: string
+  routerId: string
+  fromUp: boolean
+  toUp: boolean
+  message: string
+  createdAt: string
+}
 
 function parseHostnames(rule: string): string[] {
   const match = rule.match(/Host\((.*)\)/)
@@ -66,19 +87,6 @@ function parseHostnames(rule: string): string[] {
 
 function extractHostname(rule: string): string | null {
   return parseHostnames(rule)[0] ?? null
-}
-
-function Pill({ label, variant = 'default' }: { label: string; variant?: 'default' | 'blue' | 'muted' }) {
-  const cls = variant === 'blue'
-    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-    : variant === 'muted'
-    ? 'bg-muted text-muted-foreground border border-border'
-    : 'bg-muted text-foreground border border-border'
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {label}
-    </span>
-  )
 }
 
 function SSLIcon({ state }: { state?: SSLState }) {
@@ -144,6 +152,32 @@ function parseServiceEndpoints(value: string): ServiceEndpoint[] {
   return [{ url: trimmed, weight: 1 }]
 }
 
+function parseSqlDate(value: string): Date {
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const withZone = /Z$|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`
+  return new Date(withZone)
+}
+
+function formatDurationSince(value: string): string {
+  const date = parseSqlDate(value)
+  const ms = Date.now() - date.getTime()
+  if (!Number.isFinite(ms) || ms < 0) return 'just now'
+
+  const totalSeconds = Math.floor(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  if (totalMinutes < 60) return `${totalMinutes}m`
+  const totalHours = Math.floor(totalMinutes / 60)
+  if (totalHours < 24) return `${totalHours}h ${totalMinutes % 60}m`
+  const totalDays = Math.floor(totalHours / 24)
+  return `${totalDays}d ${totalHours % 24}h`
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
+}
+
 export function RoutersTab({ profileId, routers, entryPointNames, middlewareNames, domains }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<RouterRow | null>(null)
@@ -156,6 +190,14 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [healthMap, setHealthMap] = useState<Record<string, HealthStatus>>({})
+  const hasHydratedHealthRef = useRef(false)
+  const seenHealthEventIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    hasHydratedHealthRef.current = false
+    seenHealthEventIdsRef.current = new Set()
+  }, [profileId])
 
   function triggerSSLCheck() {
     const checkable = routers.filter(r => extractHostname(r.rule) !== null)
@@ -179,6 +221,56 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   // Initial SSL probe on first mount.
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { triggerSSLCheck() }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function pollHealth() {
+      try {
+        const response = await fetch(`/api/health/${profileId}`, { cache: 'no-store' })
+        if (!response.ok) return
+
+        const payload = await response.json() as { statuses: HealthStatus[]; events: HealthEvent[] }
+        if (cancelled) return
+
+        const nextHealthMap = Object.fromEntries(payload.statuses.map(status => [status.routerId, status]))
+        setHealthMap(nextHealthMap)
+
+        const orderedEvents = [...payload.events].reverse()
+
+        if (!hasHydratedHealthRef.current) {
+          for (const event of orderedEvents) seenHealthEventIdsRef.current.add(event.id)
+          hasHydratedHealthRef.current = true
+          return
+        }
+
+        for (const event of orderedEvents) {
+          if (seenHealthEventIdsRef.current.has(event.id)) continue
+          seenHealthEventIdsRef.current.add(event.id)
+
+          const router = routers.find(r => r.id === event.routerId)
+          const routerName = router?.name ?? 'Router'
+          const duration = formatDurationSince(event.createdAt)
+
+          if (event.toUp) {
+            toast.success(`${routerName} recovered`, { description: `State changed ${duration} ago` })
+          } else {
+            toast.error(`${routerName} is down`, { description: `State changed ${duration} ago` })
+          }
+        }
+      } catch {
+        // Ignore transient polling errors.
+      }
+    }
+
+    void pollHealth()
+    const interval = setInterval(() => { void pollHealth() }, 30_000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [profileId, routers])
 
   function handleDelete(id: string, name: string) {
     if (!confirm(`Delete router "${name}"?`)) return
@@ -249,13 +341,10 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
         return serviceTarget(primaryEndpoint).toLowerCase()
       case 'type':
         return matchDomain(hostname, domains) ? 'https' : 'http'
-      case 'entryPoints': {
-        const eps: string[] = JSON.parse(row.entry_points)
-        return eps.join(',').toLowerCase()
-      }
-      case 'middlewares': {
-        const mws: string[] = JSON.parse(row.middlewares)
-        return mws.join(',').toLowerCase()
+      case 'health': {
+        const status = healthMap[row.id]
+        if (!status) return 0
+        return status.isUp ? 200 + status.uptime24h : 100 - status.consecutiveFailures
       }
       case 'tls': {
         const matched = matchDomain(hostname, domains)
@@ -289,6 +378,15 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   const hasSelectedDisabled = selectedRouters.some(r => r.enabled === 0)
   const disableBulkEnable = isPending || !hasSelectedDisabled
   const disableBulkDisable = isPending || !hasSelectedEnabled
+
+  const knownHealthStatuses = filtered
+    .map(router => healthMap[router.id])
+    .filter((status): status is HealthStatus => status !== undefined)
+  const upRouters = knownHealthStatuses.filter(status => status.isUp).length
+  const downRouters = knownHealthStatuses.filter(status => !status.isUp).length
+  const avgUptime24h = knownHealthStatuses.length > 0
+    ? knownHealthStatuses.reduce((sum, status) => sum + clampPercent(status.uptime24h), 0) / knownHealthStatuses.length
+    : 0
 
   const totalPages = Math.max(1, Math.ceil(filteredSorted.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -346,13 +444,13 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-3 md:p-4">
       {/* Toolbar */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
-            className="pl-8 h-9 text-sm"
+            className="pl-8 h-9 text-sm rounded-xl border-border/70 bg-background/70"
             placeholder="Search..."
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
@@ -363,33 +461,33 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
           size="sm"
           onClick={triggerSSLCheck}
           disabled={sslChecking}
-          className="text-muted-foreground h-9"
+          className="h-9 rounded-xl border border-border/70 bg-background/70 text-muted-foreground hover:text-foreground"
         >
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${sslChecking ? 'animate-spin' : ''}`} />
           SSL
         </Button>
         {validSelectedIds.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger className="group inline-flex h-9 items-center gap-2 rounded-lg border border-blue-500/35 bg-gradient-to-r from-blue-600/15 via-cyan-500/10 to-blue-600/15 px-3 text-sm font-medium text-blue-200 shadow-sm transition-all hover:border-blue-400/60 hover:from-blue-600/20 hover:to-cyan-500/20 hover:text-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">
-              <Sparkles className="h-3.5 w-3.5 text-blue-300 transition-transform group-hover:scale-110" />
+            <DropdownMenuTrigger className="group inline-flex h-9 items-center gap-2 rounded-lg border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
+              <Sparkles className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:scale-110" />
               <span>Actions</span>
-              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-blue-500/25 px-1.5 py-0.5 text-[11px] leading-none text-blue-100 ring-1 ring-blue-400/30">
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none text-foreground ring-1 ring-border/70">
                 {validSelectedIds.length}
               </span>
-              <ChevronDown className="h-3.5 w-3.5 text-blue-300/90 transition-transform group-data-[popup-open]:rotate-180" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[popup-open]:rotate-180" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52 rounded-xl border border-blue-500/20 bg-popover/95 p-1.5 shadow-xl backdrop-blur">
+            <DropdownMenuContent align="start" className="w-52 rounded-xl border border-border/70 bg-popover/95 p-1.5 shadow-xl backdrop-blur">
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="px-2 text-[11px] uppercase tracking-[0.08em]">
                   Bulk Operations
                 </DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleBulkEnable} disabled={disableBulkEnable}>
-                  <Power className={`h-3.5 w-3.5 ${disableBulkEnable ? 'text-muted-foreground' : 'text-emerald-500'}`} />
+                  <Power className="h-3.5 w-3.5 text-muted-foreground" />
                   Enable
                   <DropdownMenuShortcut>ON</DropdownMenuShortcut>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleBulkDisable} disabled={disableBulkDisable}>
-                  <Power className={`h-3.5 w-3.5 ${disableBulkDisable ? 'text-muted-foreground' : 'text-amber-500'}`} />
+                  <Power className="h-3.5 w-3.5 text-muted-foreground" />
                   Disable
                   <DropdownMenuShortcut>OFF</DropdownMenuShortcut>
                 </DropdownMenuItem>
@@ -404,17 +502,31 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
           </DropdownMenu>
         )}
         <div className="flex-1" />
-        <Button size="sm" className="h-9 gap-1.5" onClick={() => setAddOpen(true)}>
+        <Button size="sm" className="h-9 gap-1.5 rounded-xl border border-border/70 bg-foreground text-background hover:bg-foreground/90" onClick={() => setAddOpen(true)}>
           <Plus className="h-3.5 w-3.5" />
           Create Router
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-600/20 px-2.5 py-1 text-emerald-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+          {upRouters} up
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-600/20 px-2.5 py-1 text-red-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-300" />
+          {downRouters} down
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-foreground">
+          Avg uptime {avgUptime24h.toFixed(1)}%
+        </span>
+      </div>
+
       {/* Table */}
-      <div className="rounded-lg border overflow-hidden">
+      <div className="rounded-xl border border-border/70 bg-background/60 shadow-[0_12px_40px_rgba(0,0,0,0.25)] overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
               <TableHead className="px-4 py-3 w-[44px]">
                 <Checkbox
                   checked={allOnPageSelected}
@@ -448,21 +560,15 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                   <ArrowUpDown className="h-3 w-3" />
                 </button>
               </TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">
-                <button type="button" onClick={() => toggleSort('entryPoints')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
-                  Entry Points
-                  <ArrowUpDown className="h-3 w-3" />
-                </button>
-              </TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[150px]">
-                <button type="button" onClick={() => toggleSort('middlewares')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
-                  Middlewares
-                  <ArrowUpDown className="h-3 w-3" />
-                </button>
-              </TableHead>
               <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">
                 <button type="button" onClick={() => toggleSort('tls')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
                   TLS
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </TableHead>
+              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[190px]">
+                <button type="button" onClick={() => toggleSort('health')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                  Health
                   <ArrowUpDown className="h-3 w-3" />
                 </button>
               </TableHead>
@@ -472,14 +578,12 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
           <TableBody>
             {paginated.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-12 text-muted-foreground text-sm">
+                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground text-sm">
                   {search ? 'No routers match your search.' : 'No routers yet.'}
                 </TableCell>
               </TableRow>
             ) : (
               paginated.map((r, i) => {
-                const eps: string[] = JSON.parse(r.entry_points)
-                const mws: string[] = JSON.parse(r.middlewares)
                 const hostname = extractHostname(r.rule)
                 const aliases = parseHostnames(r.rule).slice(1)
                 const endpoints = parseServiceEndpoints(r.service_url)
@@ -489,7 +593,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                 return (
                   <TableRow
                     key={r.id}
-                    className={`hover:bg-muted/30 transition-colors ${!isLast ? 'border-b' : ''} ${!r.enabled ? 'opacity-50' : ''}`}
+                    className={`hover:bg-muted/35 transition-colors ${!isLast ? 'border-b border-border/60' : ''} ${!r.enabled ? 'opacity-50' : ''}`}
                   >
                     <TableCell className="px-4 py-3">
                       <Checkbox
@@ -513,7 +617,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                             href={`https://${hostname}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
+                            className="text-foreground hover:text-foreground/80 underline underline-offset-2 font-mono text-xs"
                             title={`Open https://${hostname}`}
                           >
                             {hostname}
@@ -528,7 +632,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           )}
                         </div>
                       ) : (
-                        <span className="text-blue-400 font-mono text-xs">
+                        <span className="text-muted-foreground font-mono text-xs">
                           {r.rule}
                         </span>
                       )}
@@ -547,7 +651,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                             href={primaryEndpoint.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-blue-400 hover:text-blue-300 underline underline-offset-2 font-mono text-xs"
+                            className="text-foreground hover:text-foreground/80 underline underline-offset-2 font-mono text-xs"
                             title={`Open ${primaryEndpoint.url} (weight ${primaryEndpoint.weight})`}
                           >
                             {serviceTarget(primaryEndpoint.url)}
@@ -574,28 +678,6 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                       </span>
                     </TableCell>
 
-                    {/* Entry Points */}
-                    <TableCell className="px-4 py-3">
-                      {eps.length === 0 ? (
-                        <Pill label="None" variant="muted" />
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {eps.map(ep => <Pill key={ep} label={ep} />)}
-                        </div>
-                      )}
-                    </TableCell>
-
-                    {/* Middlewares */}
-                    <TableCell className="px-4 py-3">
-                      {mws.length === 0 ? (
-                        <Pill label="None" variant="muted" />
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {mws.map(mw => <Pill key={mw} label={mw} />)}
-                        </div>
-                      )}
-                    </TableCell>
-
                     {/* TLS */}
                     <TableCell className="px-4 py-3">
                       {(() => {
@@ -606,7 +688,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           : null
 
                         const encryptedBadge = (
-                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-foreground border border-border">
                             <Lock className="h-3 w-3" />
                             Encrypted
                             <SSLIcon state={sslState} />
@@ -616,7 +698,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                         if (matched) return (
                           tooltip ? (
                             <Tooltip>
-                              <TooltipTrigger className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                              <TooltipTrigger className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-foreground border border-border">
                                 <Lock className="h-3 w-3" />
                                 Encrypted
                                 <SSLIcon state={sslState} />
@@ -628,12 +710,74 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           ) : encryptedBadge
                         )
                         if (hostname) return (
-                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-foreground border border-border">
                             <Lock className="h-3 w-3" />
                             <SSLIcon state={sslState} />
                           </span>
                         )
                         return null
+                      })()}
+                    </TableCell>
+
+                    {/* Health */}
+                    <TableCell className="px-4 py-3">
+                      {(() => {
+                        const status = healthMap[r.id]
+                        if (!status) {
+                          return (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-border bg-muted text-muted-foreground">
+                                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                                Probing
+                              </span>
+                              <p className="text-[11px] text-muted-foreground">Gathering first checks</p>
+                            </div>
+                          )
+                        }
+
+                        const uptime = clampPercent(status.uptime24h)
+                        const endpointRatio = status.totalEndpoints > 0
+                          ? `${status.upEndpoints}/${status.totalEndpoints} endpoints`
+                          : 'No endpoints'
+                        const since = formatDurationSince(status.sinceAt)
+
+                        if (status.isUp) {
+                          return (
+                            <div className="space-y-1">
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-emerald-500/30 bg-emerald-600/20 text-emerald-300">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                                Up
+                              </span>
+                              <div className="h-1.5 w-full rounded-full bg-muted/80 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-foreground/85"
+                                  style={{ width: `${Math.max(6, uptime)}%` }}
+                                />
+                              </div>
+                              <p className="text-[11px] text-muted-foreground leading-tight">
+                                {uptime.toFixed(1)}% / 24h · {endpointRatio}
+                              </p>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-red-500/30 bg-red-600/20 text-red-300">
+                              <span className="h-1.5 w-1.5 rounded-full bg-red-300 animate-pulse" />
+                              Down
+                            </span>
+                            <div className="h-1.5 w-full rounded-full bg-muted/80 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-foreground/35"
+                                style={{ width: `${Math.max(6, uptime)}%` }}
+                              />
+                            </div>
+                            <p className="text-[11px] text-muted-foreground leading-tight" title={status.lastError ?? undefined}>
+                              {since} down · {endpointRatio}
+                            </p>
+                          </div>
+                        )
                       })()}
                     </TableCell>
 
@@ -649,7 +793,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-40">
                             <DropdownMenuItem onClick={() => handleToggle(r.id, r.enabled)} disabled={isPending}>
-                              <Power className={`h-3.5 w-3.5 ${r.enabled ? 'text-orange-400' : 'text-green-500'}`} />
+                              <Power className="h-3.5 w-3.5 text-muted-foreground" />
                               {r.enabled ? 'Disable' : 'Enable'}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleClone(r.id, r.name)} disabled={isPending}>
@@ -682,10 +826,10 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <Select value={String(pageSize)} onValueChange={v => { setPageSize(Number(v)); setPage(1) }}>
-            <SelectTrigger className="h-7 w-16 text-xs">
+            <SelectTrigger className="h-7 w-16 rounded-lg border-border/70 bg-background/70 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -697,11 +841,11 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
           <span>Total {filtered.length}</span>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setPage(1)} disabled={safePage === 1} className="p-1 rounded hover:bg-muted disabled:opacity-30"><ChevronsLeft className="h-3.5 w-3.5" /></button>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} className="p-1 rounded hover:bg-muted disabled:opacity-30"><ChevronLeft className="h-3.5 w-3.5" /></button>
+          <button onClick={() => setPage(1)} disabled={safePage === 1} className="p-1 rounded-md hover:bg-muted disabled:opacity-30"><ChevronsLeft className="h-3.5 w-3.5" /></button>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} className="p-1 rounded-md hover:bg-muted disabled:opacity-30"><ChevronLeft className="h-3.5 w-3.5" /></button>
           <span className="px-2">Page {safePage} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="p-1 rounded hover:bg-muted disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
-          <button onClick={() => setPage(totalPages)} disabled={safePage === totalPages} className="p-1 rounded hover:bg-muted disabled:opacity-30"><ChevronsRight className="h-3.5 w-3.5" /></button>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} className="p-1 rounded-md hover:bg-muted disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
+          <button onClick={() => setPage(totalPages)} disabled={safePage === totalPages} className="p-1 rounded-md hover:bg-muted disabled:opacity-30"><ChevronsRight className="h-3.5 w-3.5" /></button>
         </div>
       </div>
 

@@ -201,6 +201,57 @@ if (schemaVersion < 1) {
   db.pragma('foreign_keys = ON')
 }
 
+if (schemaVersion < 2) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS router_health_checks (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+      router_id TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      up INTEGER NOT NULL,
+      up_endpoints INTEGER NOT NULL,
+      total_endpoints INTEGER NOT NULL,
+      latency_ms INTEGER,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_router_health_checks_profile_time
+      ON router_health_checks (profile_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_router_health_checks_router_time
+      ON router_health_checks (router_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS router_health_status (
+      router_id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      is_up INTEGER NOT NULL,
+      up_endpoints INTEGER NOT NULL DEFAULT 0,
+      total_endpoints INTEGER NOT NULL DEFAULT 0,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      since_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_router_health_status_profile
+      ON router_health_status (profile_id);
+
+    CREATE TABLE IF NOT EXISTS router_health_events (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+      router_id TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      from_up INTEGER NOT NULL,
+      to_up INTEGER NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_router_health_events_profile_time
+      ON router_health_events (profile_id, created_at);
+  `)
+
+  db.pragma('user_version = 2')
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type ProfileRow = {
@@ -266,6 +317,33 @@ export type CertResolverRow = {
   created_at: string
 }
 
+export type RouterHealthStatusRow = {
+  router_id: string
+  profile_id: string
+  is_up: number
+  up_endpoints: number
+  total_endpoints: number
+  consecutive_failures: number
+  since_at: string
+  last_checked_at: string
+  last_error: string | null
+}
+
+export type RouterHealthEventRow = {
+  id: string
+  router_id: string
+  profile_id: string
+  from_up: number
+  to_up: number
+  message: string
+  created_at: string
+}
+
+type RouterHealthUptimeRow = {
+  router_id: string
+  uptime_percent: number
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
 export const profiles = {
@@ -287,6 +365,9 @@ export const profiles = {
   },
   delete: (id: string) => {
     const tx = db.transaction(() => {
+      db.prepare('DELETE FROM router_health_checks WHERE profile_id = ?').run(id)
+      db.prepare('DELETE FROM router_health_status WHERE profile_id = ?').run(id)
+      db.prepare('DELETE FROM router_health_events WHERE profile_id = ?').run(id)
       db.prepare('DELETE FROM routers WHERE profile_id = ?').run(id)
       db.prepare('DELETE FROM middlewares WHERE profile_id = ?').run(id)
       db.prepare('DELETE FROM entry_points WHERE profile_id = ?').run(id)
@@ -337,7 +418,15 @@ export const routers = {
       priority: data.priority ?? null,
       enabled: data.enabled ? 1 : 0,
     }),
-  delete: (id: string) => db.prepare('DELETE FROM routers WHERE id = ?').run(id),
+  delete: (id: string) => {
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM router_health_checks WHERE router_id = ?').run(id)
+      db.prepare('DELETE FROM router_health_status WHERE router_id = ?').run(id)
+      db.prepare('DELETE FROM router_health_events WHERE router_id = ?').run(id)
+      db.prepare('DELETE FROM routers WHERE id = ?').run(id)
+    })
+    tx()
+  },
   toggleEnabled: (id: string, enabled: boolean) =>
     db.prepare("UPDATE routers SET enabled=@enabled, updated_at=datetime('now') WHERE id=@id").run({ id, enabled: enabled ? 1 : 0 }),
 }
@@ -384,6 +473,104 @@ export const certResolvers = {
   list: () => db.prepare('SELECT * FROM cert_resolvers ORDER BY name').all() as CertResolverRow[],
   create: (name: string) => db.prepare('INSERT INTO cert_resolvers (name) VALUES (?)').run(name),
   delete: (id: string) => db.prepare('DELETE FROM cert_resolvers WHERE id = ?').run(id),
+}
+
+export const routerHealth = {
+  recordCheck: (input: {
+    profileId: string
+    routerId: string
+    isUp: boolean
+    upEndpoints: number
+    totalEndpoints: number
+    latencyMs: number | null
+    error: string | null
+    checkedAt?: string
+  }) => {
+    const checkedAt = input.checkedAt ?? new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO router_health_checks (router_id, profile_id, up, up_endpoints, total_endpoints, latency_ms, error, created_at)
+        VALUES (@router_id, @profile_id, @up, @up_endpoints, @total_endpoints, @latency_ms, @error, @created_at)
+      `).run({
+        router_id: input.routerId,
+        profile_id: input.profileId,
+        up: input.isUp ? 1 : 0,
+        up_endpoints: input.upEndpoints,
+        total_endpoints: input.totalEndpoints,
+        latency_ms: input.latencyMs,
+        error: input.error,
+        created_at: checkedAt,
+      })
+
+      const previous = db.prepare('SELECT * FROM router_health_status WHERE router_id = ?').get(input.routerId) as RouterHealthStatusRow | undefined
+      const changed = previous ? previous.is_up !== (input.isUp ? 1 : 0) : false
+      const consecutiveFailures = input.isUp ? 0 : (previous ? previous.consecutive_failures + 1 : 1)
+      const sinceAt = changed || !previous ? checkedAt : previous.since_at
+
+      if (changed) {
+        db.prepare(`
+          INSERT INTO router_health_events (router_id, profile_id, from_up, to_up, message, created_at)
+          VALUES (@router_id, @profile_id, @from_up, @to_up, @message, @created_at)
+        `).run({
+          router_id: input.routerId,
+          profile_id: input.profileId,
+          from_up: previous!.is_up,
+          to_up: input.isUp ? 1 : 0,
+          message: input.isUp ? 'Router recovered' : 'Router is down',
+          created_at: checkedAt,
+        })
+      }
+
+      db.prepare(`
+        INSERT INTO router_health_status (
+          router_id, profile_id, is_up, up_endpoints, total_endpoints,
+          consecutive_failures, since_at, last_checked_at, last_error
+        ) VALUES (
+          @router_id, @profile_id, @is_up, @up_endpoints, @total_endpoints,
+          @consecutive_failures, @since_at, @last_checked_at, @last_error
+        )
+        ON CONFLICT(router_id) DO UPDATE SET
+          profile_id = excluded.profile_id,
+          is_up = excluded.is_up,
+          up_endpoints = excluded.up_endpoints,
+          total_endpoints = excluded.total_endpoints,
+          consecutive_failures = excluded.consecutive_failures,
+          since_at = excluded.since_at,
+          last_checked_at = excluded.last_checked_at,
+          last_error = excluded.last_error
+      `).run({
+        router_id: input.routerId,
+        profile_id: input.profileId,
+        is_up: input.isUp ? 1 : 0,
+        up_endpoints: input.upEndpoints,
+        total_endpoints: input.totalEndpoints,
+        consecutive_failures: consecutiveFailures,
+        since_at: sinceAt,
+        last_checked_at: checkedAt,
+        last_error: input.error,
+      })
+
+      db.prepare(`
+        DELETE FROM router_health_checks
+        WHERE profile_id = @profile_id
+          AND created_at < datetime('now', '-30 days')
+      `).run({ profile_id: input.profileId })
+    })
+
+    tx()
+  },
+  listStatus: (profileId: string) =>
+    db.prepare('SELECT * FROM router_health_status WHERE profile_id = ? ORDER BY last_checked_at DESC').all(profileId) as RouterHealthStatusRow[],
+  listRecentEvents: (profileId: string, limit = 20) =>
+    db.prepare('SELECT * FROM router_health_events WHERE profile_id = ? ORDER BY created_at DESC LIMIT ?').all(profileId, limit) as RouterHealthEventRow[],
+  listUptimePercent: (profileId: string, hours: number) =>
+    db.prepare(`
+      SELECT router_id, COALESCE(ROUND(AVG(up) * 100.0, 2), 0) as uptime_percent
+      FROM router_health_checks
+      WHERE profile_id = ? AND created_at >= datetime('now', ?)
+      GROUP BY router_id
+    `).all(profileId, `-${Math.max(1, Math.floor(hours))} hours`) as RouterHealthUptimeRow[],
 }
 
 export default db

@@ -146,8 +146,9 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
     const initial = parseServiceEndpoints(router?.service_url ?? '')
     return initial.length > 0 ? initial : [{ url: '', weight: 1 }]
   })
+  const defaultEntryPoints = !isEdit && availableEntryPoints.includes('websecure') ? ['websecure'] : []
   const [selectedEPs, setSelectedEPs] = useState<string[]>(
-    router ? JSON.parse(router.entry_points) : []
+    router ? JSON.parse(router.entry_points) : defaultEntryPoints
   )
   const [selectedMWs, setSelectedMWs] = useState<string[]>(
     router ? JSON.parse(router.middlewares) : []
@@ -200,7 +201,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
       const stored = localStorage.getItem('routr:lastDomain')
       setSelectedDomain((stored && availableDomains.some(d => d.domain === stored)) ? stored : (availableDomains[0]?.domain ?? ''))
       setCustomRule('')
-      setSelectedEPs([]); setSelectedMWs([])
+      setSelectedEPs(defaultEntryPoints); setSelectedMWs([])
       setEnabled(true)
       setMode(hasDomains ? 'domain' : 'custom')
     }
@@ -395,7 +396,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
             </div>
             <div className="space-y-1.5">
               {serviceEndpoints.map((endpoint, index) => (
-                <div key={`svc-${index}`} className="flex items-center gap-2">
+                <div key={`svc-${index}`} className="grid min-w-0 grid-cols-[1.75rem_minmax(0,1fr)_5rem_2rem] items-center gap-2">
                   <div className="flex flex-col gap-0.5 shrink-0">
                     <Button
                       type="button"
@@ -425,7 +426,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     value={endpoint.url}
                     onChange={e => updateServiceEndpointUrl(index, e.target.value)}
                     placeholder="http://backend:8080"
-                    className="min-w-0 flex-1"
+                    className="w-full"
                   />
                   <Input
                     type="number"
@@ -433,7 +434,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     step={1}
                     value={endpoint.weight}
                     onChange={e => updateServiceEndpointWeight(index, e.target.value)}
-                    className="w-[4.75rem]"
+                    className="w-full"
                     aria-label={`Weight for endpoint ${index + 1}`}
                   />
                   <Button

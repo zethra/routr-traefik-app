@@ -55,16 +55,57 @@ function parseServiceEndpoints(value: string): ServiceEndpoint[] {
   return [{ url: trimmed, weight: 1 }]
 }
 
+function extractHostClause(rule: string): string | null {
+  const match = rule.match(/Host\(([^)]*)\)/)
+  return match ? match[0] : null
+}
+
 function extractHostnames(rule: string): string[] {
-  const match = rule.match(/Host\((.*)\)/)
-  if (!match) return []
-  return Array.from(match[1].matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
+  const hostClause = extractHostClause(rule)
+  if (!hostClause) return []
+  return Array.from(hostClause.matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
+}
+
+function replaceRuleHostname(rule: string, hostname: string): string {
+  const hostClause = extractHostClause(rule)
+  if (!hostClause) return rule
+  return rule.replace(hostClause, `Host(\`${hostname}\`)`)
+}
+
+function aliasRouterName(baseName: string, hostname: string, index: number): string {
+  const slug = hostname.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `host-${index}`
+  return `${baseName}--alias-${index}-${slug}`
 }
 
 function matchDomain(hostname: string, domainRows: DomainRow[]): DomainRow | null {
   return domainRows.find(d =>
     hostname === d.domain || hostname.endsWith(`.${d.domain}`)
   ) ?? null
+}
+
+function buildRouterTls(row: RouterRow, hostname: string | null, domainRows: DomainRow[]): Record<string, unknown> | null {
+  const matchedDomain = hostname ? matchDomain(hostname, domainRows) : null
+
+  if (matchedDomain) {
+    return {
+      certResolver: matchedDomain.cert_resolver,
+      domains: [{
+        main: matchedDomain.domain,
+        sans: [`*.${matchedDomain.domain}`],
+      }],
+    }
+  }
+
+  if (!row.tls_resolver) return null
+
+  const tls: Record<string, unknown> = { certResolver: row.tls_resolver }
+  if (hostname) {
+    tls.domains = [{ main: hostname }]
+  } else if (row.tls_domain) {
+    tls.domains = [{ main: row.tls_domain }]
+  }
+
+  return tls
 }
 
 export function buildTraefikConfig(
@@ -77,46 +118,39 @@ export function buildTraefikConfig(
   const httpMiddlewares: Record<string, unknown> = {}
 
   for (const row of routerRows.filter(r => r.enabled)) {
+    const endpoints = parseServiceEndpoints(row.service_url)
+    if (endpoints.length === 0) continue
+
     const entryPoints = parseStringArray(row.entry_points)
     const mws = parseStringArray(row.middlewares)
     const hostnames = extractHostnames(row.rule)
 
-    const router: Record<string, unknown> = {
-      rule: row.rule,
-      ...(entryPoints.length ? { entryPoints } : {}),
-      service: row.name,
-      ...(mws.length ? { middlewares: mws } : {}),
+    const routerEntries = hostnames.length > 1
+      ? hostnames.map((hostname, index) => ({
+          name: index === 0 ? row.name : aliasRouterName(row.name, hostname, index),
+          rule: replaceRuleHostname(row.rule, hostname),
+          hostname,
+        }))
+      : [{
+          name: row.name,
+          rule: row.rule,
+          hostname: hostnames[0] ?? null,
+        }]
+
+    for (const routerEntry of routerEntries) {
+      const router: Record<string, unknown> = {
+        rule: routerEntry.rule,
+        ...(entryPoints.length ? { entryPoints } : {}),
+        service: row.name,
+        ...(mws.length ? { middlewares: mws } : {}),
+      }
+
+      const tls = buildRouterTls(row, routerEntry.hostname, domainRows)
+      if (tls) router.tls = tls
+
+      httpRouters[routerEntry.name] = router
     }
 
-    const matchedDomains = Array.from(new Map(
-      hostnames
-        .map(hostname => matchDomain(hostname, domainRows))
-        .filter((domain): domain is DomainRow => domain !== null)
-        .map(domain => [domain.domain, domain])
-    ).values())
-
-    if (matchedDomains.length > 0) {
-      router.tls = {
-        certResolver: matchedDomains[0].cert_resolver,
-        domains: matchedDomains.map(domain => ({
-          main: domain.domain,
-          sans: [`*.${domain.domain}`],
-        })),
-      }
-    } else if (row.tls_resolver) {
-      const tls: Record<string, unknown> = { certResolver: row.tls_resolver }
-      if (hostnames.length > 0) {
-        tls.domains = [{ main: hostnames[0], ...(hostnames.length > 1 ? { sans: hostnames.slice(1) } : {}) }]
-      } else if (row.tls_domain) {
-        tls.domains = [{ main: row.tls_domain }]
-      }
-      router.tls = tls
-    }
-
-    const endpoints = parseServiceEndpoints(row.service_url)
-    if (endpoints.length === 0) continue
-
-    httpRouters[row.name] = router
     httpServices[row.name] = {
       loadBalancer: {
         servers: endpoints.map(endpoint => ({

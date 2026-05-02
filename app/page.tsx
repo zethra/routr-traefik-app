@@ -3,9 +3,13 @@ import { ThemeToggle } from './_components/ThemeToggle'
 import { ProfileSwitcher } from './_components/ProfileSwitcher'
 import { MainTabs } from './_components/MainTabs'
 import { ensureHealthMonitorStarted } from '@/lib/router-health'
+import { auth } from '@/auth'
+import { Button } from '@/components/ui/button'
+import { signOutUser } from '@/app/_actions/auth'
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   ensureHealthMonitorStarted()
+  const session = await auth()
 
   const params = await searchParams
   const requestedName = params.profile
@@ -37,6 +41,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
             <p className="text-muted-foreground text-xs">Traefik dynamic config GUI</p>
           </div>
           <div className="flex items-center gap-2">
+            <span className="hidden md:inline text-xs text-muted-foreground max-w-[220px] truncate">
+              {session?.user?.email ?? session?.user?.name ?? 'Signed in'}
+            </span>
+            <form action={signOutUser}>
+              <Button type="submit" variant="outline" size="sm">Sign out</Button>
+            </form>
             <ProfileSwitcher profiles={allProfiles} currentProfile={profile.name} />
             <ThemeToggle />
           </div>

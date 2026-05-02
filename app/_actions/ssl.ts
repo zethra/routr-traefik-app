@@ -1,6 +1,7 @@
 'use server'
 
 import tls from 'tls'
+import { requireAuth } from '@/lib/auth-guard'
 
 export type SSLResult = {
   valid: boolean
@@ -55,6 +56,7 @@ function probeTLS(host: string, servername: string, port: number): Promise<SSLRe
 }
 
 export async function checkSSL(hostname: string): Promise<SSLResult> {
+  await requireAuth()
   const port = Number(process.env.SSL_CHECK_PORT ?? '443') || 443
   const internalHost = process.env.SSL_CHECK_INTERNAL_HOST?.trim()
 

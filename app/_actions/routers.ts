@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { routers } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-guard'
 
 function normalizeRule(rule: string): string {
   const trimmed = rule.trim()
@@ -16,6 +17,7 @@ export async function createRouter(profileId: string, data: {
   middlewares: string[]
   priority?: number | null
 }) {
+  await requireAuth()
   routers.create(profileId, { ...data, rule: normalizeRule(data.rule) })
   revalidatePath('/')
 }
@@ -29,16 +31,19 @@ export async function updateRouter(id: string, data: {
   priority?: number | null
   enabled: boolean
 }) {
+  await requireAuth()
   routers.update(id, { ...data, rule: normalizeRule(data.rule) })
   revalidatePath('/')
 }
 
 export async function deleteRouter(id: string) {
+  await requireAuth()
   routers.delete(id)
   revalidatePath('/')
 }
 
 export async function deleteRouters(ids: string[]) {
+  await requireAuth()
   for (const id of ids) routers.delete(id)
   revalidatePath('/')
 }
@@ -53,6 +58,7 @@ function nextCloneName(existingNames: string[], sourceName: string): string {
 }
 
 export async function cloneRouter(profileId: string, id: string) {
+  await requireAuth()
   const source = routers.get(id)
   if (!source) throw new Error('Router not found')
 
@@ -73,11 +79,13 @@ export async function cloneRouter(profileId: string, id: string) {
 }
 
 export async function toggleRouter(id: string, enabled: boolean) {
+  await requireAuth()
   routers.toggleEnabled(id, enabled)
   revalidatePath('/')
 }
 
 export async function setRoutersEnabled(ids: string[], enabled: boolean) {
+  await requireAuth()
   for (const id of ids) routers.toggleEnabled(id, enabled)
   revalidatePath('/')
 }

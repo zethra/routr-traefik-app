@@ -82,6 +82,12 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
     )
   })
 
+  const sortedDomainStats = [...filteredDomainStats].sort((a, b) => {
+    if (b.matchedRoutes !== a.matchedRoutes) return b.matchedRoutes - a.matchedRoutes
+    if (b.activeRoutes !== a.activeRoutes) return b.activeRoutes - a.activeRoutes
+    return a.domain.domain.localeCompare(b.domain.domain)
+  })
+
   function handleDelete(id: string, domain: string) {
     if (!confirm(`Remove domain "${domain}"?`)) return
     startTransition(async () => {
@@ -131,11 +137,11 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
                 <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[240px]">Coverage</TableHead>
                 <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[180px]">Resolver</TableHead>
                 <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[130px]">Added</TableHead>
-                <TableHead className="px-4 py-3 w-[120px]">Actions</TableHead>
+                <TableHead className="px-4 py-3 w-[120px]"/>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDomainStats.map(({ domain: d, matchedRoutes, activeRoutes, hostPreview, extraHosts }) => (
+              {sortedDomainStats.map(({ domain: d, matchedRoutes, activeRoutes, hostPreview, extraHosts }) => (
                 <TableRow key={d.id}>
                   <TableCell className="px-4 py-3">
                     <div className="flex items-center gap-2 min-w-0">

@@ -395,7 +395,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
             </div>
             <div className="space-y-1.5">
               {serviceEndpoints.map((endpoint, index) => (
-                <div key={`svc-${index}`} className="grid grid-cols-[auto_minmax(0,1fr)_4.75rem_auto] items-center gap-2">
+                <div key={`svc-${index}`} className="flex items-center gap-2">
                   <div className="flex flex-col gap-0.5 shrink-0">
                     <Button
                       type="button"
@@ -425,7 +425,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     value={endpoint.url}
                     onChange={e => updateServiceEndpointUrl(index, e.target.value)}
                     placeholder="http://backend:8080"
-                    className="min-w-0"
+                    className="min-w-0 flex-1"
                   />
                   <Input
                     type="number"
@@ -433,7 +433,7 @@ export function RouterDialog({ open, onClose, router, profileId, availableEntryP
                     step={1}
                     value={endpoint.weight}
                     onChange={e => updateServiceEndpointWeight(index, e.target.value)}
-                    className="w-full"
+                    className="w-[4.75rem]"
                     aria-label={`Weight for endpoint ${index + 1}`}
                   />
                   <Button

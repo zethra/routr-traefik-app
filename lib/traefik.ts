@@ -55,9 +55,10 @@ function parseServiceEndpoints(value: string): ServiceEndpoint[] {
   return [{ url: trimmed, weight: 1 }]
 }
 
-function extractHostname(rule: string): string | null {
-  const match = rule.match(/Host\(`([^`]+)`\)/)
-  return match ? match[1] : null
+function extractHostnames(rule: string): string[] {
+  const match = rule.match(/Host\((.*)\)/)
+  if (!match) return []
+  return Array.from(match[1].matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
 }
 
 function matchDomain(hostname: string, domainRows: DomainRow[]): DomainRow | null {
@@ -78,6 +79,7 @@ export function buildTraefikConfig(
   for (const row of routerRows.filter(r => r.enabled)) {
     const entryPoints = parseStringArray(row.entry_points)
     const mws = parseStringArray(row.middlewares)
+    const hostnames = extractHostnames(row.rule)
 
     const router: Record<string, unknown> = {
       rule: row.rule,
@@ -86,17 +88,28 @@ export function buildTraefikConfig(
       ...(mws.length ? { middlewares: mws } : {}),
     }
 
-    const hostname = extractHostname(row.rule)
-    const matched = hostname ? matchDomain(hostname, domainRows) : null
+    const matchedDomains = Array.from(new Map(
+      hostnames
+        .map(hostname => matchDomain(hostname, domainRows))
+        .filter((domain): domain is DomainRow => domain !== null)
+        .map(domain => [domain.domain, domain])
+    ).values())
 
-    if (matched) {
+    if (matchedDomains.length > 0) {
       router.tls = {
-        certResolver: matched.cert_resolver,
-        domains: [{ main: `*.${matched.domain}` }],
+        certResolver: matchedDomains[0].cert_resolver,
+        domains: matchedDomains.map(domain => ({
+          main: domain.domain,
+          sans: [`*.${domain.domain}`],
+        })),
       }
     } else if (row.tls_resolver) {
       const tls: Record<string, unknown> = { certResolver: row.tls_resolver }
-      if (row.tls_domain) tls.domains = [{ main: row.tls_domain }]
+      if (hostnames.length > 0) {
+        tls.domains = [{ main: hostnames[0], ...(hostnames.length > 1 ? { sans: hostnames.slice(1) } : {}) }]
+      } else if (row.tls_domain) {
+        tls.domains = [{ main: row.tls_domain }]
+      }
       router.tls = tls
     }
 

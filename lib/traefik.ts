@@ -1,4 +1,5 @@
 import type { RouterRow, MiddlewareRow, DomainRow } from './db'
+import { isIP } from 'node:net'
 
 type ServiceEndpoint = { url: string; weight: number }
 
@@ -19,6 +20,15 @@ function parseObject(value: string): Record<string, unknown> {
       : {}
   } catch {
     return {}
+  }
+}
+
+function endpointNeedsInsecureSkipVerify(endpoint: ServiceEndpoint): boolean {
+  try {
+    const parsed = new URL(endpoint.url)
+    return parsed.protocol === 'https:' && isIP(parsed.hostname) !== 0
+  } catch {
+    return false
   }
 }
 
@@ -116,6 +126,7 @@ export function buildTraefikConfig(
   const httpRouters: Record<string, unknown> = {}
   const httpServices: Record<string, unknown> = {}
   const httpMiddlewares: Record<string, unknown> = {}
+  const httpServersTransports: Record<string, unknown> = {}
 
   for (const row of routerRows.filter(r => r.enabled)) {
     const endpoints = parseServiceEndpoints(row.service_url)
@@ -151,8 +162,18 @@ export function buildTraefikConfig(
       httpRouters[routerEntry.name] = router
     }
 
+    const needsInsecureSkipVerify = endpoints.some(endpointNeedsInsecureSkipVerify)
+    const serversTransportName = `${row.name}--transport`
+
+    if (needsInsecureSkipVerify) {
+      httpServersTransports[serversTransportName] = {
+        insecureSkipVerify: true,
+      }
+    }
+
     httpServices[row.name] = {
       loadBalancer: {
+        ...(needsInsecureSkipVerify ? { serversTransport: serversTransportName } : {}),
         servers: endpoints.map(endpoint => ({
           url: endpoint.url,
           weight: endpoint.weight,
@@ -171,6 +192,9 @@ export function buildTraefikConfig(
   }
   if (Object.keys(httpMiddlewares).length > 0) {
     http.middlewares = httpMiddlewares
+  }
+  if (Object.keys(httpServersTransports).length > 0) {
+    http.serversTransports = httpServersTransports
   }
 
   return { http }

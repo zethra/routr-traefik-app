@@ -44,6 +44,8 @@ type TabValue = 'domains' | 'entrypoints' | 'middlewares' | 'routers'
 
 type Props = {
   profileId: string
+  profileName: string
+  profileToken: string
   routers: RouterRow[]
   middlewares: MiddlewareRow[]
   entryPoints: EntryPointRow[]
@@ -55,6 +57,8 @@ type Props = {
 
 export function MainTabs({
   profileId,
+  profileName,
+  profileToken,
   routers,
   middlewares,
   entryPoints,
@@ -89,6 +93,8 @@ export function MainTabs({
       <TabsContent value="routers">
         <RoutersTab
           profileId={profileId}
+          profileName={profileName}
+          profileToken={profileToken}
           routers={routers}
           entryPointNames={entryPointNames}
           middlewareNames={middlewareNames}

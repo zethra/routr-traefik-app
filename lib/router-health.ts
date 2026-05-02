@@ -1,4 +1,5 @@
 import { profiles, routerHealth, routers } from './db'
+import { Agent } from 'undici'
 
 type ServiceEndpoint = { url: string; weight: number }
 
@@ -24,6 +25,9 @@ if (!monitorState.__routrHealthMonitorState) {
 }
 
 const state = monitorState.__routrHealthMonitorState
+const insecureHttpsAgent = new Agent({
+  connect: { rejectUnauthorized: false },
+})
 
 function parseServiceEndpoints(value: string): ServiceEndpoint[] {
   const trimmed = value.trim()
@@ -59,15 +63,27 @@ async function checkEndpoint(url: string): Promise<EndpointCheckResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   const start = Date.now()
+  const isHttps = url.trim().toLowerCase().startsWith('https://')
 
-  try {
-    const response = await fetch(url, {
+  async function doFetch(insecureTls: boolean) {
+    return fetch(url, {
       method: 'GET',
       cache: 'no-store',
       redirect: 'follow',
       signal: controller.signal,
       headers: { 'user-agent': 'routr-health/1.0' },
-    })
+      ...(insecureTls ? { dispatcher: insecureHttpsAgent } : {}),
+    } as RequestInit & { dispatcher?: Agent })
+  }
+
+  try {
+    let response: Response
+    try {
+      response = await doFetch(false)
+    } catch (error) {
+      if (!isHttps) throw error
+      response = await doFetch(true)
+    }
 
     return {
       url,

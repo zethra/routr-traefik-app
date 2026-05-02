@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RouterDialog } from './RouterDialog'
+import { ConfigViewerDialog } from './ConfigViewerDialog'
 import { cloneRouter, deleteRouter, deleteRouters, setRoutersEnabled, toggleRouter } from '@/app/_actions/routers'
 import { checkSSL } from '@/app/_actions/ssl'
 import type { SSLResult } from '@/app/_actions/ssl'
@@ -48,6 +49,8 @@ type DomainRow = {
 
 type Props = {
   profileId: string
+  profileName: string
+  profileToken: string
   routers: RouterRow[]
   entryPointNames: string[]
   middlewareNames: string[]
@@ -178,7 +181,7 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value))
 }
 
-export function RoutersTab({ profileId, routers, entryPointNames, middlewareNames, domains }: Props) {
+export function RoutersTab({ profileId, profileName, profileToken, routers, entryPointNames, middlewareNames, domains }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<RouterRow | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -485,6 +488,7 @@ export function RoutersTab({ profileId, routers, entryPointNames, middlewareName
         >
           <RefreshCw className={`h-3.5 w-3.5 ${(sslChecking || healthRefreshing) ? 'animate-spin' : ''}`} />
         </Button>
+        <ConfigViewerDialog profileName={profileName} profileToken={profileToken} />
         {validSelectedIds.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger className="group inline-flex h-9 items-center gap-2 rounded-lg border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground shadow-sm transition-all hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">

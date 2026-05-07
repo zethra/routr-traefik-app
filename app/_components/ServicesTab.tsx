@@ -23,9 +23,23 @@ type ServiceRow = {
   updated_at: string
 }
 
+type RouterRow = {
+  id: string
+  name: string
+  rule: string
+  service_url: string
+  service_id: string | null
+  entry_points: string
+  middlewares: string
+  priority: number | null
+  enabled: number
+}
+
 type Props = {
   profileId: string
   services: ServiceRow[]
+  routers: RouterRow[]
+  onNavigate?: (tab: 'routers') => void
 }
 
 type EndpointStatus = {
@@ -55,6 +69,11 @@ type ServiceHealthEvent = {
   toUp: boolean
   message: string
   createdAt: string
+}
+
+function extractDomain(rule: string): string | null {
+  const hostMatch = rule.match(/Host\(['"`]([^'"`]+)['"`]\)/i)
+  return hostMatch ? hostMatch[1] : null
 }
 
 function parseEndpoints(endpoints: string): string[] {
@@ -177,7 +196,7 @@ function TagDropdown({ service, allServices, onClose }: { service: ServiceRow; a
   )
 }
 
-export function ServicesTab({ profileId, services }: Props) {
+export function ServicesTab({ profileId, services, routers, onNavigate }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ServiceRow | null>(null)
   const [openTagDropdown, setOpenTagDropdown] = useState<string | null>(null)
@@ -378,12 +397,11 @@ export function ServicesTab({ profileId, services }: Props) {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50 hover:bg-muted/50">
-                <TableHead className="px-2 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[50px]">Logo</TableHead>
-                <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Name</TableHead>
-                <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">
+                <TableHead className="pl-4 pr-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Name</TableHead>
+                <TableHead className="px-2 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[100px]">
                   <DropdownMenu open={tagFilterOpen} onOpenChange={setTagFilterOpen}>
                     <DropdownMenuTrigger className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
-                      <span>Tag</span>
+                      <span>TAGS</span>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                       </svg>
@@ -420,9 +438,10 @@ export function ServicesTab({ profileId, services }: Props) {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableHead>
-                <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground">Health</TableHead>
-                <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[110px]">Added</TableHead>
-                <TableHead className="px-4 py-3 w-[100px]" />
+                <TableHead className="px-2 py-3 text-xs uppercase tracking-wide text-muted-foreground">Routes</TableHead>
+                <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Health</TableHead>
+                <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[110px]">Added</TableHead>
+                <TableHead className="px-3 py-3 w-[100px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -430,24 +449,24 @@ export function ServicesTab({ profileId, services }: Props) {
                 const endpoints = parseEndpoints(service.endpoints)
                 return (
                   <TableRow key={service.id} className={`hover:bg-muted/35 transition-colors ${service.enabled === 0 ? 'opacity-50' : ''}`}>
+                    <TableCell className="pl-4 pr-3 py-3">
+                      <div className="flex items-center gap-2">
+                        {service.logo ? (
+                          <img
+                            src={service.logo}
+                            alt={service.name}
+                            className="h-8 w-8 rounded object-contain flex-shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded bg-muted flex-shrink-0" />
+                        )}
+                        <span className="font-medium text-sm">{service.name}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="px-2 py-3">
-                      {service.logo ? (
-                        <img
-                          src={service.logo}
-                          alt={service.name}
-                          className="h-8 w-8 rounded object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
-                      ) : (
-                        <div className="h-8 w-8 rounded bg-muted" />
-                      )}
-                    </TableCell>
-                    <TableCell className="px-3 py-3">
-                      <span className="font-medium text-sm">{service.name}</span>
-                    </TableCell>
-                    <TableCell className="px-3 py-3">
                       <div className="relative">
                         <button
                           onClick={() => setOpenTagDropdown(openTagDropdown === service.id ? null : service.id)}
@@ -468,7 +487,35 @@ export function ServicesTab({ profileId, services }: Props) {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="px-4 py-3">
+                    <TableCell className="px-2 py-3">
+                      {(() => {
+                        const matchingRouters = routers.filter(r => r.service_id === service.id && r.enabled === 1)
+                        if (matchingRouters.length === 0) {
+                          return <span className="text-xs text-muted-foreground">—</span>
+                        }
+                        return (
+                          <div className="flex flex-wrap gap-1">
+                            {matchingRouters.slice(0, 3).map(router => {
+                              const domain = extractDomain(router.rule)
+                              return (
+                                <button
+                                  key={router.id}
+                                  onClick={() => onNavigate?.('routers')}
+                                  className="text-xs font-medium text-foreground hover:text-foreground/80 underline transition-colors truncate max-w-[150px]"
+                                  title={domain || router.name}
+                                >
+                                  {domain || router.name}
+                                </button>
+                              )
+                            })}
+                            {matchingRouters.length > 3 && (
+                              <span className="text-xs text-muted-foreground">+{matchingRouters.length - 3}</span>
+                            )}
+                          </div>
+                        )
+                      })()}
+                    </TableCell>
+                    <TableCell className="px-3 py-3">
                       {(() => {
                         const status = healthMap[service.id]
                         if (!status) {
@@ -559,10 +606,10 @@ export function ServicesTab({ profileId, services }: Props) {
                         )
                       })()}
                     </TableCell>
-                    <TableCell className="px-4 py-3 text-right text-xs text-muted-foreground">
+                    <TableCell className="px-3 py-3 text-right text-xs text-muted-foreground">
                       {formatCreated(service.created_at)}
                     </TableCell>
-                    <TableCell className="px-4 py-3">
+                    <TableCell className="px-3 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Toggle
                           size="sm"

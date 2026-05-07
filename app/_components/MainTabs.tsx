@@ -100,7 +100,7 @@ export function MainTabs({
       </TabsContent>
 
       <TabsContent value="services">
-        <ServicesTab profileId={profileId} services={services} />
+        <ServicesTab profileId={profileId} services={services} routers={routers} onNavigate={setActiveTab} />
       </TabsContent>
 
       <TabsContent value="routers">

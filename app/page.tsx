@@ -9,7 +9,9 @@ import { signOutUser } from '@/app/_actions/auth'
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   ensureHealthMonitorStarted()
-  const session = await auth()
+  const session = process.env.SKIP_AUTH === 'true'
+    ? { user: { email: 'dev@localhost', name: 'Developer' } }
+    : await auth()
 
   const params = await searchParams
   const requestedName = params.profile

@@ -8,6 +8,10 @@ type LoginPageProps = {
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
+  if (process.env.SKIP_AUTH === 'true') {
+    redirect('/')
+  }
+
   const session = await auth()
   if (session?.user) {
     redirect('/')

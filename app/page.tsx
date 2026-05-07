@@ -1,4 +1,4 @@
-import { profiles, routers, middlewares, entryPoints, domains } from '@/lib/db'
+import { profiles, routers, middlewares, entryPoints, domains, services } from '@/lib/db'
 import { ThemeToggle } from './_components/ThemeToggle'
 import { ProfileSwitcher } from './_components/ProfileSwitcher'
 import { MainTabs } from './_components/MainTabs'
@@ -30,6 +30,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const middlewareRows = middlewares.list(profile.id)
   const entryPointRows = entryPoints.list(profile.id)
   const domainRows = domains.list(profile.id)
+  const serviceRows = services.list(profile.id)
 
   const epNames = entryPointRows.map(ep => ep.name)
   const mwNames = middlewareRows.map(mw => mw.name)
@@ -72,6 +73,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           middlewares={middlewareRows}
           entryPoints={entryPointRows}
           domains={domainRows}
+          services={serviceRows}
           entryPointNames={epNames}
           middlewareNames={mwNames}
           initialTab="routers"

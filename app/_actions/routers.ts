@@ -12,7 +12,7 @@ function normalizeRule(rule: string): string {
 export async function createRouter(profileId: string, data: {
   name: string
   rule: string
-  service_url: string
+  service_id: string
   entry_points: string[]
   middlewares: string[]
   priority?: number | null
@@ -25,7 +25,7 @@ export async function createRouter(profileId: string, data: {
 export async function updateRouter(id: string, data: {
   name: string
   rule: string
-  service_url: string
+  service_id: string
   entry_points: string[]
   middlewares: string[]
   priority?: number | null
@@ -68,7 +68,7 @@ export async function cloneRouter(profileId: string, id: string) {
   routers.create(profileId, {
     name: cloneName,
     rule: normalizeRule(source.rule),
-    service_url: source.service_url,
+    service_id: source.service_id || '',
     entry_points: JSON.parse(source.entry_points),
     middlewares: JSON.parse(source.middlewares),
     priority: source.priority,

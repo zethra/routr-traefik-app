@@ -252,6 +252,175 @@ if (schemaVersion < 2) {
   db.pragma('user_version = 2')
 }
 
+if (schemaVersion < 3) {
+  db.pragma('foreign_keys = OFF')
+
+  // Create services table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS services (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+      name TEXT NOT NULL,
+      endpoints TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      profile_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(name, profile_id)
+    )
+  `)
+
+  // Add service_id column to routers if it doesn't exist
+  const routerColumns = new Set(
+    (db.pragma('table_info(routers)') as Array<{ name: string }>).map(c => c.name)
+  )
+  if (!routerColumns.has('service_id')) {
+    db.exec(`ALTER TABLE routers ADD COLUMN service_id TEXT`)
+  }
+
+  // Migrate existing routers: create a service from each router's service_url
+  const existingRouters = db.prepare('SELECT * FROM routers WHERE service_id IS NULL').all() as Array<any>
+  for (const router of existingRouters) {
+    // Parse service_url (could be plain string or JSON array of {url, weight})
+    let endpoints: string[]
+    try {
+      const parsed = JSON.parse(router.service_url)
+      if (Array.isArray(parsed)) {
+        endpoints = parsed.map((item: any) => typeof item === 'string' ? item : item.url)
+      } else {
+        endpoints = [router.service_url]
+      }
+    } catch {
+      endpoints = [router.service_url]
+    }
+
+    // Create service named after router (with -service suffix if name conflict)
+    const baseServiceName = router.name
+    let serviceName = baseServiceName
+    let counter = 1
+    while (db.prepare('SELECT id FROM services WHERE name = ? AND profile_id = ?').get(serviceName, router.profile_id)) {
+      counter++
+      serviceName = `${baseServiceName}-${counter}`
+    }
+
+    const serviceId = randomBytes(4).toString('hex')
+    db.prepare(`
+      INSERT INTO services (id, name, endpoints, enabled, profile_id)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      serviceId,
+      serviceName,
+      JSON.stringify(endpoints),
+      router.enabled,
+      router.profile_id
+    )
+
+    // Update router to reference the service
+    db.prepare('UPDATE routers SET service_id = ? WHERE id = ?').run(serviceId, router.id)
+  }
+
+  db.pragma('foreign_keys = ON')
+  db.pragma('user_version = 3')
+}
+
+if (schemaVersion < 4) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS service_health_checks (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+      service_id TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      up INTEGER NOT NULL,
+      up_endpoints INTEGER NOT NULL,
+      total_endpoints INTEGER NOT NULL,
+      latency_ms INTEGER,
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_service_health_checks_profile_time
+      ON service_health_checks (profile_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_service_health_checks_service_time
+      ON service_health_checks (service_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS service_health_status (
+      service_id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL,
+      is_up INTEGER NOT NULL,
+      up_endpoints INTEGER NOT NULL DEFAULT 0,
+      total_endpoints INTEGER NOT NULL DEFAULT 0,
+      consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      since_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_checked_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_service_health_status_profile
+      ON service_health_status (profile_id);
+
+    CREATE TABLE IF NOT EXISTS service_health_events (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+      service_id TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      from_up INTEGER NOT NULL,
+      to_up INTEGER NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_service_health_events_profile_time
+      ON service_health_events (profile_id, created_at);
+  `)
+
+  db.pragma('user_version = 4')
+}
+
+if (schemaVersion < 5) {
+  const serviceColumns = new Set(
+    (db.pragma('table_info(services)') as Array<{ name: string }>).map(c => c.name)
+  )
+  if (!serviceColumns.has('logo')) {
+    db.exec(`ALTER TABLE services ADD COLUMN logo TEXT`)
+  }
+
+  db.pragma('user_version = 5')
+}
+
+if (schemaVersion < 6) {
+  const statusColumns = new Set(
+    (db.pragma('table_info(service_health_status)') as Array<{ name: string }>).map(c => c.name)
+  )
+  if (!statusColumns.has('endpoint_status')) {
+    db.exec(`ALTER TABLE service_health_status ADD COLUMN endpoint_status TEXT`)
+  }
+
+  db.pragma('user_version = 6')
+}
+
+if (schemaVersion < 7) {
+  const serviceColumns = new Set(
+    (db.pragma('table_info(services)') as Array<{ name: string }>).map(c => c.name)
+  )
+  if (!serviceColumns.has('tag') && !serviceColumns.has('category')) {
+    db.exec(`ALTER TABLE services ADD COLUMN tag TEXT`)
+  }
+
+  db.pragma('user_version = 7')
+}
+
+if (schemaVersion < 8) {
+  const serviceColumns = new Set(
+    (db.pragma('table_info(services)') as Array<{ name: string }>).map(c => c.name)
+  )
+  // If we have category but not tag, add tag column and copy data
+  if (serviceColumns.has('category') && !serviceColumns.has('tag')) {
+    db.exec(`
+      ALTER TABLE services ADD COLUMN tag TEXT;
+      UPDATE services SET tag = category;
+    `)
+  }
+
+  db.pragma('user_version = 8')
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type ProfileRow = {
@@ -273,6 +442,7 @@ export type RouterRow = {
   name: string
   rule: string
   service_url: string
+  service_id: string | null
   entry_points: string
   middlewares: string
   priority: number | null
@@ -311,6 +481,18 @@ export type DomainRow = {
   created_at: string
 }
 
+export type ServiceRow = {
+  id: string
+  name: string
+  endpoints: string
+  logo: string | null
+  tag: string | null
+  enabled: number
+  profile_id: string
+  created_at: string
+  updated_at: string
+}
+
 export type CertResolverRow = {
   id: string
   name: string
@@ -344,6 +526,41 @@ type RouterHealthUptimeRow = {
   uptime_percent: number
 }
 
+export type ServiceHealthStatusRow = {
+  service_id: string
+  profile_id: string
+  is_up: number
+  up_endpoints: number
+  total_endpoints: number
+  consecutive_failures: number
+  since_at: string
+  last_checked_at: string
+  last_error: string | null
+  endpoint_status: string | null
+}
+
+export type EndpointStatus = {
+  url: string
+  up: boolean
+  latencyMs: number | null
+  error: string | null
+}
+
+export type ServiceHealthEventRow = {
+  id: string
+  service_id: string
+  profile_id: string
+  from_up: number
+  to_up: number
+  message: string
+  created_at: string
+}
+
+type ServiceHealthUptimeRow = {
+  service_id: string
+  uptime_percent: number
+}
+
 // ── CRUD ───────────────────────────────────────────────────────────────────
 
 export const profiles = {
@@ -372,6 +589,7 @@ export const profiles = {
       db.prepare('DELETE FROM middlewares WHERE profile_id = ?').run(id)
       db.prepare('DELETE FROM entry_points WHERE profile_id = ?').run(id)
       db.prepare('DELETE FROM domains WHERE profile_id = ?').run(id)
+      db.prepare('DELETE FROM services WHERE profile_id = ?').run(id)
       db.prepare('DELETE FROM profiles WHERE id = ?').run(id)
     })
     tx()
@@ -388,14 +606,16 @@ export const routers = {
     db.prepare('SELECT * FROM routers WHERE profile_id = ? ORDER BY name').all(profileId) as RouterRow[],
   get: (id: string) => db.prepare('SELECT * FROM routers WHERE id = ?').get(id) as RouterRow | undefined,
   create: (profileId: string, data: {
-    name: string; rule: string; service_url: string; entry_points: string[];
+    name: string; rule: string; service_id: string; entry_points: string[];
     middlewares: string[]; priority?: number | null; enabled?: boolean
   }) =>
     db.prepare(`
-      INSERT INTO routers (name, rule, service_url, entry_points, middlewares, priority, enabled, profile_id)
-      VALUES (@name, @rule, @service_url, @entry_points, @middlewares, @priority, @enabled, @profile_id)
+      INSERT INTO routers (name, rule, service_url, service_id, entry_points, middlewares, priority, enabled, profile_id)
+      VALUES (@name, @rule, '', @service_id, @entry_points, @middlewares, @priority, @enabled, @profile_id)
     `).run({
-      ...data,
+      name: data.name,
+      rule: data.rule,
+      service_id: data.service_id,
       entry_points: JSON.stringify(data.entry_points),
       middlewares: JSON.stringify(data.middlewares),
       priority: data.priority ?? null,
@@ -403,16 +623,19 @@ export const routers = {
       profile_id: profileId,
     }),
   update: (id: string, data: {
-    name: string; rule: string; service_url: string; entry_points: string[];
+    name: string; rule: string; service_id: string; entry_points: string[];
     middlewares: string[]; priority?: number | null; enabled: boolean
   }) =>
     db.prepare(`
-      UPDATE routers SET name=@name, rule=@rule, service_url=@service_url,
+      UPDATE routers SET name=@name, rule=@rule, service_url='', service_id=@service_id,
         entry_points=@entry_points, middlewares=@middlewares, priority=@priority,
         enabled=@enabled, updated_at=datetime('now')
       WHERE id=@id
     `).run({
-      id, ...data,
+      id,
+      name: data.name,
+      rule: data.rule,
+      service_id: data.service_id,
       entry_points: JSON.stringify(data.entry_points),
       middlewares: JSON.stringify(data.middlewares),
       priority: data.priority ?? null,
@@ -467,6 +690,38 @@ export const domains = {
   update: (id: string, domain: string, cert_resolver: string) =>
     db.prepare('UPDATE domains SET domain = @domain, cert_resolver = @cert_resolver WHERE id = @id').run({ id, domain, cert_resolver }),
   delete: (id: string) => db.prepare('DELETE FROM domains WHERE id = ?').run(id),
+}
+
+export const services = {
+  list: (profileId: string) =>
+    db.prepare('SELECT * FROM services WHERE profile_id = ? ORDER BY name').all(profileId) as ServiceRow[],
+  get: (id: string) => db.prepare('SELECT * FROM services WHERE id = ?').get(id) as ServiceRow | undefined,
+  create: (profileId: string, data: { name: string; endpoints: string[]; logo?: string | null; tag?: string | null }) =>
+    db.prepare(`
+      INSERT INTO services (name, endpoints, logo, tag, enabled, profile_id)
+      VALUES (@name, @endpoints, @logo, @tag, @enabled, @profile_id)
+    `).run({
+      name: data.name,
+      endpoints: JSON.stringify(data.endpoints),
+      logo: data.logo ?? null,
+      tag: data.tag ?? null,
+      enabled: 1,
+      profile_id: profileId,
+    }),
+  update: (id: string, data: { name: string; endpoints: string[]; logo?: string | null; tag?: string | null }) =>
+    db.prepare(`
+      UPDATE services SET name=@name, endpoints=@endpoints, logo=@logo, tag=@tag, updated_at=datetime('now')
+      WHERE id=@id
+    `).run({
+      id,
+      name: data.name,
+      endpoints: JSON.stringify(data.endpoints),
+      logo: data.logo ?? null,
+      tag: data.tag ?? null,
+    }),
+  delete: (id: string) => db.prepare('DELETE FROM services WHERE id = ?').run(id),
+  toggleEnabled: (id: string, enabled: boolean) =>
+    db.prepare("UPDATE services SET enabled=@enabled, updated_at=datetime('now') WHERE id=@id").run({ id, enabled: enabled ? 1 : 0 }),
 }
 
 export const certResolvers = {
@@ -571,6 +826,107 @@ export const routerHealth = {
       WHERE profile_id = ? AND created_at >= datetime('now', ?)
       GROUP BY router_id
     `).all(profileId, `-${Math.max(1, Math.floor(hours))} hours`) as RouterHealthUptimeRow[],
+}
+
+export const serviceHealth = {
+  recordCheck: (input: {
+    profileId: string
+    serviceId: string
+    isUp: boolean
+    upEndpoints: number
+    totalEndpoints: number
+    latencyMs: number | null
+    error: string | null
+    endpointStatuses?: EndpointStatus[]
+    checkedAt?: string
+  }) => {
+    const checkedAt = input.checkedAt ?? new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO service_health_checks (service_id, profile_id, up, up_endpoints, total_endpoints, latency_ms, error, created_at)
+        VALUES (@service_id, @profile_id, @up, @up_endpoints, @total_endpoints, @latency_ms, @error, @created_at)
+      `).run({
+        service_id: input.serviceId,
+        profile_id: input.profileId,
+        up: input.isUp ? 1 : 0,
+        up_endpoints: input.upEndpoints,
+        total_endpoints: input.totalEndpoints,
+        latency_ms: input.latencyMs,
+        error: input.error,
+        created_at: checkedAt,
+      })
+
+      const previous = db.prepare('SELECT * FROM service_health_status WHERE service_id = ?').get(input.serviceId) as ServiceHealthStatusRow | undefined
+      const changed = previous ? previous.is_up !== (input.isUp ? 1 : 0) : false
+      const consecutiveFailures = input.isUp ? 0 : (previous ? previous.consecutive_failures + 1 : 1)
+      const sinceAt = changed || !previous ? checkedAt : previous.since_at
+
+      if (changed) {
+        db.prepare(`
+          INSERT INTO service_health_events (service_id, profile_id, from_up, to_up, message, created_at)
+          VALUES (@service_id, @profile_id, @from_up, @to_up, @message, @created_at)
+        `).run({
+          service_id: input.serviceId,
+          profile_id: input.profileId,
+          from_up: previous!.is_up,
+          to_up: input.isUp ? 1 : 0,
+          message: input.isUp ? 'Service recovered' : 'Service is down',
+          created_at: checkedAt,
+        })
+      }
+
+      db.prepare(`
+        INSERT INTO service_health_status (
+          service_id, profile_id, is_up, up_endpoints, total_endpoints,
+          consecutive_failures, since_at, last_checked_at, last_error, endpoint_status
+        ) VALUES (
+          @service_id, @profile_id, @is_up, @up_endpoints, @total_endpoints,
+          @consecutive_failures, @since_at, @last_checked_at, @last_error, @endpoint_status
+        )
+        ON CONFLICT(service_id) DO UPDATE SET
+          profile_id = excluded.profile_id,
+          is_up = excluded.is_up,
+          up_endpoints = excluded.up_endpoints,
+          total_endpoints = excluded.total_endpoints,
+          consecutive_failures = excluded.consecutive_failures,
+          since_at = excluded.since_at,
+          last_checked_at = excluded.last_checked_at,
+          last_error = excluded.last_error,
+          endpoint_status = excluded.endpoint_status
+      `).run({
+        service_id: input.serviceId,
+        profile_id: input.profileId,
+        is_up: input.isUp ? 1 : 0,
+        up_endpoints: input.upEndpoints,
+        total_endpoints: input.totalEndpoints,
+        consecutive_failures: consecutiveFailures,
+        since_at: sinceAt,
+        last_checked_at: checkedAt,
+        last_error: input.error,
+        endpoint_status: input.endpointStatuses ? JSON.stringify(input.endpointStatuses) : null,
+      })
+
+      db.prepare(`
+        DELETE FROM service_health_checks
+        WHERE profile_id = @profile_id
+          AND created_at < datetime('now', '-30 days')
+      `).run({ profile_id: input.profileId })
+    })
+
+    tx()
+  },
+  listStatus: (profileId: string) =>
+    db.prepare('SELECT * FROM service_health_status WHERE profile_id = ? ORDER BY last_checked_at DESC').all(profileId) as ServiceHealthStatusRow[],
+  listRecentEvents: (profileId: string, limit = 20) =>
+    db.prepare('SELECT * FROM service_health_events WHERE profile_id = ? ORDER BY created_at DESC LIMIT ?').all(profileId, limit) as ServiceHealthEventRow[],
+  listUptimePercent: (profileId: string, hours: number) =>
+    db.prepare(`
+      SELECT service_id, COALESCE(ROUND(AVG(up) * 100.0, 2), 0) as uptime_percent
+      FROM service_health_checks
+      WHERE profile_id = ? AND created_at >= datetime('now', ?)
+      GROUP BY service_id
+    `).all(profileId, `-${Math.max(1, Math.floor(hours))} hours`) as ServiceHealthUptimeRow[],
 }
 
 export default db

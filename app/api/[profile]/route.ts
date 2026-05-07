@@ -1,5 +1,5 @@
 import type { NextRequest } from 'next/server'
-import { profiles, routers, middlewares, domains } from '@/lib/db'
+import { profiles, routers, middlewares, domains, services } from '@/lib/db'
 import { buildTraefikConfig } from '@/lib/traefik'
 
 export async function GET(req: NextRequest, ctx: RouteContext<'/api/[profile]'>) {
@@ -20,6 +20,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<'/api/[profile]'>)
       routers.list(profile.id),
       middlewares.list(profile.id),
       domains.list(profile.id),
+      services.list(profile.id),
     )
     return Response.json(config)
   } catch (error) {

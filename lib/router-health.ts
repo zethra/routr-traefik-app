@@ -1,4 +1,4 @@
-import { profiles, routerHealth, routers } from './db'
+import { profiles, serviceHealth, services } from './db'
 import http from 'node:http'
 import https from 'node:https'
 
@@ -142,14 +142,15 @@ export async function runProfileHealthChecks(profileId: string) {
 
   try {
     const checkedAt = nowSqlString()
-    const routerRows = routers.list(profileId).filter(router => router.enabled === 1)
+    const serviceRows = services.list(profileId).filter(service => service.enabled === 1)
 
-    for (const routerRow of routerRows) {
-      const endpoints = parseServiceEndpoints(routerRow.service_url)
+    for (const serviceRow of serviceRows) {
+      const endpoints = parseServiceEndpoints(serviceRow.endpoints)
+      console.log(`[Health] Service: ${serviceRow.name}, Stored endpoints: ${serviceRow.endpoints}, Parsed endpoints: ${endpoints.length}`, endpoints)
       if (endpoints.length === 0) {
-        routerHealth.recordCheck({
+        serviceHealth.recordCheck({
           profileId,
-          routerId: routerRow.id,
+          serviceId: serviceRow.id,
           isUp: false,
           upEndpoints: 0,
           totalEndpoints: 0,
@@ -167,14 +168,20 @@ export async function runProfileHealthChecks(profileId: string) {
         ? Math.round(successfulLatencies.reduce((sum, value) => sum + value, 0) / successfulLatencies.length)
         : null
 
-      routerHealth.recordCheck({
+      serviceHealth.recordCheck({
         profileId,
-        routerId: routerRow.id,
+        serviceId: serviceRow.id,
         isUp: upEndpoints > 0,
         upEndpoints,
         totalEndpoints: endpoints.length,
         latencyMs,
         error: upEndpoints > 0 ? null : summarizeFailure(results),
+        endpointStatuses: results.map(r => ({
+          url: r.url,
+          up: r.up,
+          latencyMs: r.latencyMs,
+          error: r.error,
+        })),
         checkedAt,
       })
     }

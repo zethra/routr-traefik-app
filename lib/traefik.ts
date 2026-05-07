@@ -1,4 +1,4 @@
-import type { RouterRow, MiddlewareRow, DomainRow } from './db'
+import type { RouterRow, MiddlewareRow, DomainRow, ServiceRow } from './db'
 import { isIP } from 'node:net'
 
 type ServiceEndpoint = { url: string; weight: number }
@@ -121,15 +121,40 @@ function buildRouterTls(row: RouterRow, hostname: string | null, domainRows: Dom
 export function buildTraefikConfig(
   routerRows: RouterRow[],
   middlewareRows: MiddlewareRow[],
-  domainRows: DomainRow[] = []
+  domainRows: DomainRow[] = [],
+  serviceRows: ServiceRow[] = []
 ) {
   const httpRouters: Record<string, unknown> = {}
   const httpServices: Record<string, unknown> = {}
   const httpMiddlewares: Record<string, unknown> = {}
   const httpServersTransports: Record<string, unknown> = {}
 
+  // Build service map
+  const serviceMap = new Map<string, ServiceRow>()
+  for (const service of serviceRows.filter(s => s.enabled)) {
+    serviceMap.set(service.id, service)
+  }
+
   for (const row of routerRows.filter(r => r.enabled)) {
-    const endpoints = parseServiceEndpoints(row.service_url)
+    // Get endpoints from service if service_id is set, otherwise fallback to service_url
+    let endpoints: ServiceEndpoint[]
+    let serviceName: string
+
+    if (row.service_id && serviceMap.has(row.service_id)) {
+      const service = serviceMap.get(row.service_id)!
+      try {
+        const parsedEndpoints = JSON.parse(service.endpoints) as string[]
+        endpoints = parsedEndpoints.map(url => ({ url, weight: 1 }))
+      } catch {
+        endpoints = []
+      }
+      serviceName = service.name
+    } else {
+      // Fallback to old service_url for backward compatibility
+      endpoints = parseServiceEndpoints(row.service_url)
+      serviceName = row.name
+    }
+
     if (endpoints.length === 0) continue
 
     const entryPoints = parseStringArray(row.entry_points)
@@ -152,7 +177,7 @@ export function buildTraefikConfig(
       const router: Record<string, unknown> = {
         rule: routerEntry.rule,
         ...(entryPoints.length ? { entryPoints } : {}),
-        service: row.name,
+        service: serviceName,
         ...(mws.length ? { middlewares: mws } : {}),
       }
 
@@ -163,7 +188,7 @@ export function buildTraefikConfig(
     }
 
     const needsInsecureSkipVerify = endpoints.some(endpointNeedsInsecureSkipVerify)
-    const serversTransportName = `${row.name}--transport`
+    const serversTransportName = `${serviceName}--transport`
 
     if (needsInsecureSkipVerify) {
       httpServersTransports[serversTransportName] = {
@@ -171,7 +196,7 @@ export function buildTraefikConfig(
       }
     }
 
-    httpServices[row.name] = {
+    httpServices[serviceName] = {
       loadBalancer: {
         ...(needsInsecureSkipVerify ? { serversTransport: serversTransportName } : {}),
         servers: endpoints.map(endpoint => ({

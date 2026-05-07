@@ -35,6 +35,7 @@ type RouterRow = {
   name: string
   rule: string
   service_url: string
+  service_id: string | null
   entry_points: string
   middlewares: string
   priority: number | null
@@ -47,6 +48,13 @@ type DomainRow = {
   cert_resolver: string
 }
 
+type ServiceRow = {
+  id: string
+  name: string
+  endpoints: string
+  logo: string | null
+}
+
 type Props = {
   profileId: string
   profileName: string
@@ -55,32 +63,12 @@ type Props = {
   entryPointNames: string[]
   middlewareNames: string[]
   domains: DomainRow[]
+  services: ServiceRow[]
 }
 
 type SSLState = { status: 'checking' | 'done'; result?: SSLResult }
 type ServiceEndpoint = { url: string; weight: number }
-type SortField = 'name' | 'hostname' | 'endpoint' | 'type' | 'tls' | 'health'
-
-type HealthStatus = {
-  routerId: string
-  isUp: boolean
-  upEndpoints: number
-  totalEndpoints: number
-  consecutiveFailures: number
-  sinceAt: string
-  lastCheckedAt: string
-  lastError: string | null
-  uptime24h: number
-}
-
-type HealthEvent = {
-  id: string
-  routerId: string
-  fromUp: boolean
-  toUp: boolean
-  message: string
-  createdAt: string
-}
+type SortField = 'name' | 'hostname' | 'endpoint' | 'type' | 'tls'
 
 function parseHostnames(rule: string): string[] {
   const match = rule.match(/Host\((.*)\)/)
@@ -155,33 +143,7 @@ function parseServiceEndpoints(value: string): ServiceEndpoint[] {
   return [{ url: trimmed, weight: 1 }]
 }
 
-function parseSqlDate(value: string): Date {
-  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
-  const withZone = /Z$|[+-]\d{2}:?\d{2}$/.test(normalized) ? normalized : `${normalized}Z`
-  return new Date(withZone)
-}
-
-function formatDurationSince(value: string): string {
-  const date = parseSqlDate(value)
-  const ms = Date.now() - date.getTime()
-  if (!Number.isFinite(ms) || ms < 0) return 'just now'
-
-  const totalSeconds = Math.floor(ms / 1000)
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  if (totalMinutes < 60) return `${totalMinutes}m`
-  const totalHours = Math.floor(totalMinutes / 60)
-  if (totalHours < 24) return `${totalHours}h ${totalMinutes % 60}m`
-  const totalDays = Math.floor(totalHours / 24)
-  return `${totalDays}d ${totalHours % 24}h`
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.min(100, Math.max(0, value))
-}
-
-export function RoutersTab({ profileId, profileName, profileToken, routers, entryPointNames, middlewareNames, domains }: Props) {
+export function RoutersTab({ profileId, profileName, profileToken, routers, entryPointNames, middlewareNames, domains, services }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<RouterRow | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -193,15 +155,6 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
-  const [healthMap, setHealthMap] = useState<Record<string, HealthStatus>>({})
-  const [healthRefreshing, setHealthRefreshing] = useState(false)
-  const hasHydratedHealthRef = useRef(false)
-  const seenHealthEventIdsRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    hasHydratedHealthRef.current = false
-    seenHealthEventIdsRef.current = new Set()
-  }, [profileId])
 
   function triggerSSLCheck() {
     const checkable = routers.filter(r => extractHostname(r.rule) !== null)
@@ -226,71 +179,8 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { triggerSSLCheck() }, [])
 
-  const refreshHealth = useCallback(async (force = false) => {
-    const endpoint = force ? `/api/health/${profileId}?force=1` : `/api/health/${profileId}`
-    const response = await fetch(endpoint, { cache: 'no-store' })
-    if (!response.ok) return
-
-    const payload = await response.json() as { statuses: HealthStatus[]; events: HealthEvent[] }
-
-    const nextHealthMap = Object.fromEntries(payload.statuses.map(status => [status.routerId, status]))
-    setHealthMap(nextHealthMap)
-
-    const orderedEvents = [...payload.events].reverse()
-
-    if (!hasHydratedHealthRef.current) {
-      for (const event of orderedEvents) seenHealthEventIdsRef.current.add(event.id)
-      hasHydratedHealthRef.current = true
-      return
-    }
-
-    for (const event of orderedEvents) {
-      if (seenHealthEventIdsRef.current.has(event.id)) continue
-      seenHealthEventIdsRef.current.add(event.id)
-
-      const router = routers.find(r => r.id === event.routerId)
-      const routerName = router?.name ?? 'Router'
-      const duration = formatDurationSince(event.createdAt)
-
-      if (event.toUp) {
-        toast.success(`${routerName} recovered`, { description: `State changed ${duration} ago` })
-      } else {
-        toast.error(`${routerName} is down`, { description: `State changed ${duration} ago` })
-      }
-    }
-  }, [profileId, routers])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function pollHealth() {
-      try {
-        if (cancelled) return
-        await refreshHealth(false)
-      } catch {
-        // Ignore transient polling errors.
-      }
-    }
-
-    void pollHealth()
-    const interval = setInterval(() => { void pollHealth() }, 30_000)
-
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [refreshHealth])
-
   function handleRefreshAll() {
     triggerSSLCheck()
-    setHealthRefreshing(true)
-    refreshHealth(true)
-      .catch(() => {
-        toast.error('Failed to refresh health checks')
-      })
-      .finally(() => {
-        setHealthRefreshing(false)
-      })
   }
 
   function handleDelete(id: string, name: string) {
@@ -362,11 +252,6 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
         return serviceTarget(primaryEndpoint).toLowerCase()
       case 'type':
         return matchDomain(hostname, domains) ? 'https' : 'http'
-      case 'health': {
-        const status = healthMap[row.id]
-        if (!status) return 0
-        return status.isUp ? 200 + status.uptime24h : 100 - status.consecutiveFailures
-      }
       case 'tls': {
         const matched = matchDomain(hostname, domains)
         if (!matched) return 0
@@ -399,15 +284,6 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
   const hasSelectedDisabled = selectedRouters.some(r => r.enabled === 0)
   const disableBulkEnable = isPending || !hasSelectedDisabled
   const disableBulkDisable = isPending || !hasSelectedEnabled
-
-  const knownHealthStatuses = filtered
-    .map(router => healthMap[router.id])
-    .filter((status): status is HealthStatus => status !== undefined)
-  const upRouters = knownHealthStatuses.filter(status => status.isUp).length
-  const downRouters = knownHealthStatuses.filter(status => !status.isUp).length
-  const avgUptime24h = knownHealthStatuses.length > 0
-    ? knownHealthStatuses.reduce((sum, status) => sum + clampPercent(status.uptime24h), 0) / knownHealthStatuses.length
-    : 0
 
   const totalPages = Math.max(1, Math.ceil(filteredSorted.length / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -481,12 +357,12 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
           variant="ghost"
           size="icon"
           onClick={handleRefreshAll}
-          disabled={sslChecking || healthRefreshing}
+          disabled={sslChecking}
           className="h-9 w-9 rounded-xl border border-border/70 bg-background/70 text-muted-foreground hover:text-foreground"
-          title="Refresh SSL and health"
-          aria-label="Refresh SSL and health"
+          title="Refresh SSL"
+          aria-label="Refresh SSL"
         >
-          <RefreshCw className={`h-3.5 w-3.5 ${(sslChecking || healthRefreshing) ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${sslChecking ? 'animate-spin' : ''}`} />
         </Button>
         <ConfigViewerDialog profileName={profileName} profileToken={profileToken} />
         {validSelectedIds.length > 0 && (
@@ -529,20 +405,6 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
           <Plus className="h-3.5 w-3.5" />
           Create Router
         </Button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-600/20 px-2.5 py-1 text-emerald-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-          {upRouters} up
-        </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-600/20 px-2.5 py-1 text-red-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-300" />
-          {downRouters} down
-        </span>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-foreground">
-          Avg uptime {avgUptime24h.toFixed(1)}%
-        </span>
       </div>
 
       {/* Table */}
@@ -589,12 +451,6 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
                   <ArrowUpDown className="h-3 w-3" />
                 </button>
               </TableHead>
-              <TableHead className="px-4 py-3 text-xs uppercase tracking-wide text-muted-foreground w-[190px]">
-                <button type="button" onClick={() => toggleSort('health')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
-                  Health
-                  <ArrowUpDown className="h-3 w-3" />
-                </button>
-              </TableHead>
               <TableHead className="px-4 py-3 w-[150px]"/>
             </TableRow>
           </TableHeader>
@@ -609,8 +465,22 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
               paginated.map((r, i) => {
                 const hostname = extractHostname(r.rule)
                 const aliases = parseHostnames(r.rule).slice(1)
-                const endpoints = parseServiceEndpoints(r.service_url)
+
+                // Get endpoints from service if service_id is set, otherwise fallback to service_url
+                const service = r.service_id ? services.find(s => s.id === r.service_id) : null
+                const endpoints = service
+                  ? (() => {
+                      try {
+                        const parsed = JSON.parse(service.endpoints)
+                        return (Array.isArray(parsed) ? parsed : []).map(url => ({ url, weight: 1 }))
+                      } catch {
+                        return []
+                      }
+                    })()
+                  : parseServiceEndpoints(r.service_url)
+
                 const primaryEndpoint = endpoints[0]
+                const serviceName = service?.name
                 const isLast = i === paginated.length - 1
                 const isSelected = selectedIds.includes(r.id)
                 return (
@@ -668,7 +538,16 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
 
                     {/* Services */}
                     <TableCell className="w-[240px] pl-3 pr-4 py-3 whitespace-nowrap">
-                      {primaryEndpoint?.url ? (
+                      {serviceName ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <span className="font-medium text-xs">{serviceName}</span>
+                          {endpoints.length > 0 && (
+                            <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              {endpoints.length} endpoint{endpoints.length === 1 ? '' : 's'}
+                            </span>
+                          )}
+                        </div>
+                      ) : primaryEndpoint?.url ? (
                         <div className="inline-flex items-center gap-1.5">
                           <a
                             href={primaryEndpoint.url}
@@ -739,68 +618,6 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
                           </span>
                         )
                         return null
-                      })()}
-                    </TableCell>
-
-                    {/* Health */}
-                    <TableCell className="px-4 py-3">
-                      {(() => {
-                        const status = healthMap[r.id]
-                        if (!status) {
-                          return (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-border bg-muted text-muted-foreground">
-                                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
-                                Probing
-                              </span>
-                              <p className="text-[11px] text-muted-foreground">Gathering first checks</p>
-                            </div>
-                          )
-                        }
-
-                        const uptime = clampPercent(status.uptime24h)
-                        const endpointRatio = status.totalEndpoints > 0
-                          ? `${status.upEndpoints}/${status.totalEndpoints} endpoints`
-                          : 'No endpoints'
-                        const since = formatDurationSince(status.sinceAt)
-
-                        if (status.isUp) {
-                          return (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-emerald-500/30 bg-emerald-600/20 text-emerald-300">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-                                Up
-                              </span>
-                              <div className="h-1.5 w-full rounded-full bg-muted/80 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-white"
-                                  style={{ width: `${Math.max(6, uptime)}%` }}
-                                />
-                              </div>
-                              <p className="text-[11px] text-muted-foreground leading-tight">
-                                {uptime.toFixed(1)}% / 24h · {endpointRatio}
-                              </p>
-                            </div>
-                          )
-                        }
-
-                        return (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border border-red-500/30 bg-red-600/20 text-red-300">
-                              <span className="h-1.5 w-1.5 rounded-full bg-red-300 animate-pulse" />
-                              Down
-                            </span>
-                            <div className="h-1.5 w-full rounded-full bg-muted/80 overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-white"
-                                style={{ width: `${Math.max(6, uptime)}%` }}
-                              />
-                            </div>
-                            <p className="text-[11px] text-muted-foreground leading-tight" title={status.lastError ?? undefined}>
-                              {since} down · {endpointRatio}
-                            </p>
-                          </div>
-                        )
                       })()}
                     </TableCell>
 
@@ -879,6 +696,7 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
         availableEntryPoints={entryPointNames}
         availableMiddlewares={middlewareNames}
         availableDomains={domains}
+        availableServices={services}
       />
       {editTarget && (
         <RouterDialog
@@ -889,7 +707,8 @@ export function RoutersTab({ profileId, profileName, profileToken, routers, entr
           availableEntryPoints={entryPointNames}
           availableMiddlewares={middlewareNames}
           availableDomains={domains}
-          />
+          availableServices={services}
+        />
       )}
     </div>
   )

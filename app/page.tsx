@@ -1,7 +1,7 @@
 import { profiles, routers, middlewares, entryPoints, domains, services } from '@/lib/db'
 import { ThemeToggle } from './_components/ThemeToggle'
 import { ProfileSwitcher } from './_components/ProfileSwitcher'
-import { MainTabs } from './_components/MainTabs'
+import { LayoutContent } from './_components/LayoutContent'
 import { ensureHealthMonitorStarted } from '@/lib/router-health'
 import { auth } from '@/auth'
 import { Button } from '@/components/ui/button'
@@ -36,46 +36,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const mwNames = middlewareRows.map(mw => mw.name)
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Routr</h1>
-            <p className="text-muted-foreground text-xs">Traefik dynamic config GUI</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden md:inline text-xs text-muted-foreground max-w-[220px] truncate">
-              {session?.user?.email ?? session?.user?.name ?? 'Signed in'}
-            </span>
-            <form action={signOutUser}>
-              <Button type="submit" variant="outline" size="sm">Sign out</Button>
-            </form>
-            <ProfileSwitcher profiles={allProfiles} currentProfile={profile.name} />
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{routerRows.length} routers</span>
-          <span>·</span>
-          <span>{middlewareRows.length} middlewares</span>
-          <span>·</span>
-          <span>{entryPointRows.length} entry points</span>
-        </div>
-
-        <MainTabs
-          profileId={profile.id}
-          routers={routerRows}
-          middlewares={middlewareRows}
-          entryPoints={entryPointRows}
-          domains={domainRows}
-          services={serviceRows}
-          entryPointNames={epNames}
-          middlewareNames={mwNames}
-        />
-      </main>
-    </div>
+    <LayoutContent
+      session={session}
+      allProfiles={allProfiles}
+      currentProfile={profile.name}
+      profileId={profile.id}
+      routers={routerRows}
+      middlewares={middlewareRows}
+      entryPoints={entryPointRows}
+      domains={domainRows}
+      services={serviceRows}
+      entryPointNames={epNames}
+      middlewareNames={mwNames}
+    />
   )
 }

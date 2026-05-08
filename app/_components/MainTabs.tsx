@@ -1,7 +1,3 @@
-'use client'
-
-import { useState } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RouterRow, MiddlewareRow, EntryPointRow, DomainRow, ServiceRow } from '@/lib/db'
 import { MiddlewaresTab } from './MiddlewaresTab'
 import { EntryPointsTab } from './EntryPointsTab'
@@ -19,7 +15,7 @@ type Props = {
   services: ServiceRow[]
   entryPointNames: string[]
   middlewareNames: string[]
-  initialTab?: TabValue
+  activeTab: TabValue
 }
 
 export function MainTabs({
@@ -31,24 +27,15 @@ export function MainTabs({
   services,
   entryPointNames,
   middlewareNames,
-  initialTab = 'services',
+  activeTab,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<TabValue>(initialTab)
-
   return (
-    <Tabs value={activeTab} onValueChange={v => setActiveTab(v as TabValue)}>
-      <TabsList className="mb-4">
-        <TabsTrigger value="domains">Domains</TabsTrigger>
-        <TabsTrigger value="services">Services</TabsTrigger>
-        <TabsTrigger value="entrypoints">Ingresses</TabsTrigger>
-        <TabsTrigger value="middlewares">Middleware</TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="domains">
+    <>
+      {activeTab === 'domains' && (
         <DomainsTab profileId={profileId} domains={domains} routers={routers} />
-      </TabsContent>
+      )}
 
-      <TabsContent value="services">
+      {activeTab === 'services' && (
         <ServiceTab
           profileId={profileId}
           services={services}
@@ -57,15 +44,15 @@ export function MainTabs({
           availableMiddlewares={middlewareNames}
           availableDomains={domains}
         />
-      </TabsContent>
+      )}
 
-      <TabsContent value="entrypoints">
+      {activeTab === 'entrypoints' && (
         <EntryPointsTab profileId={profileId} entryPoints={entryPoints} />
-      </TabsContent>
+      )}
 
-      <TabsContent value="middlewares">
+      {activeTab === 'middlewares' && (
         <MiddlewaresTab profileId={profileId} middlewares={middlewares} />
-      </TabsContent>
-    </Tabs>
+      )}
+    </>
   )
 }

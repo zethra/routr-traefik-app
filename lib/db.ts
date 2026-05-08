@@ -350,7 +350,8 @@ if (schemaVersion < 4) {
       consecutive_failures INTEGER NOT NULL DEFAULT 0,
       since_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_checked_at TEXT NOT NULL DEFAULT (datetime('now')),
-      last_error TEXT
+      last_error TEXT,
+      endpoint_status TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_service_health_status_profile

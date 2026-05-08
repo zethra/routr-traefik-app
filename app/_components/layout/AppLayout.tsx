@@ -90,9 +90,9 @@ export function AppLayout({
             )}
 
           {/* Page content */}
-        <div className="flex-1 flex flex-col pt-16">
+        <div className="flex-1 flex flex-col pt-16 relative z-0">
           {/* Page content */}
-          <main className="flex-1 overflow-auto px-4 py-4 md:py-6">
+          <main className="flex-1 overflow-auto px-4 py-4 md:py-6 relative">
             <div className="max-w-6xl mx-auto">
               {activeTab === 'domains' && (
                 <DomainsTab profileId={profileId} domains={domains} routers={routers} />

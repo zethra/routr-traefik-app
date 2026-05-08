@@ -259,58 +259,59 @@ export function ServiceTab({
       <p className="text-muted-foreground text-xs">
         Services group backend endpoints for load balancing. Routers reference services to route traffic to multiple servers.
       </p>
+
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Filter by tag:</span>
+        <DropdownMenu open={tagFilterOpen} onOpenChange={setTagFilterOpen}>
+          <DropdownMenuTrigger className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
+            <span className="text-sm">Tags</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+            </svg>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            {allTags.map(tag => (
+              <DropdownMenuItem
+                key={tag}
+                onClick={() => {
+                  const newSelected = new Set(selectedTagFilters)
+                  if (newSelected.has(tag)) {
+                    newSelected.delete(tag)
+                  } else {
+                    newSelected.add(tag)
+                  }
+                  setSelectedTagFilters(newSelected)
+                }}
+                className={selectedTagFilters.has(tag) ? 'bg-foreground/10' : ''}
+              >
+                {tag}
+              </DropdownMenuItem>
+            ))}
+            {selectedTagFilters.size > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setSelectedTagFilters(new Set())}
+                  className="text-xs"
+                >
+                  Clear filters
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       </div>
 
       {/* Scrollable cards section */}
       <div className="flex-1 min-h-0">
-        <div className="h-full max-h-[calc(100vh-64px)] overflow-y-auto space-y-3 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-2 md:p-4">
+        <div className="h-full overflow-y-auto space-y-3 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-2 md:p-4">
       {services.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No services configured.</p>
       ) : filteredServices.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No services match your search.</p>
       ) : (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm text-muted-foreground">Filter by tag:</span>
-            <DropdownMenu open={tagFilterOpen} onOpenChange={setTagFilterOpen}>
-              <DropdownMenuTrigger className="inline-flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
-                <span className="text-sm">Tags</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                </svg>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                {allTags.map(tag => (
-                  <DropdownMenuItem
-                    key={tag}
-                    onClick={() => {
-                      const newSelected = new Set(selectedTagFilters)
-                      if (newSelected.has(tag)) {
-                        newSelected.delete(tag)
-                      } else {
-                        newSelected.add(tag)
-                      }
-                      setSelectedTagFilters(newSelected)
-                    }}
-                    className={selectedTagFilters.has(tag) ? 'bg-foreground/10' : ''}
-                  >
-                    {tag}
-                  </DropdownMenuItem>
-                ))}
-                {selectedTagFilters.size > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setSelectedTagFilters(new Set())}
-                      className="text-xs"
-                    >
-                      Clear filters
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+        <div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 px-1 items-start">
             {sortedServices.map(service => (
               <ServiceCard

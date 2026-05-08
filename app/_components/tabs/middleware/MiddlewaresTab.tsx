@@ -9,7 +9,7 @@ import { MiddlewareRow } from '@/lib/db'
 import { deleteMiddleware, toggleMiddleware } from '@/app/_actions/middlewares'
 import { toast } from 'sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AppTabContentLayout } from '../../layout/AppTabContentLayout'
+import { AppTabLayout } from '../../layout/AppTabLayout'
 
 type Props = {
   profileId: string
@@ -40,7 +40,7 @@ export function MiddlewaresTab({ profileId, middlewares }: Props) {
   }
 
   return (
-    <AppTabContentLayout title="Middleware">
+    <AppTabLayout title="Middleware">
       <div className="space-y-4">
         <div className="flex justify-end">
         <Button onClick={() => setAddOpen(true)}>Add Middleware</Button>
@@ -107,6 +107,6 @@ export function MiddlewaresTab({ profileId, middlewares }: Props) {
         />
       )}
       </div>
-    </AppTabContentLayout>
+    </AppTabLayout>
   )
 }

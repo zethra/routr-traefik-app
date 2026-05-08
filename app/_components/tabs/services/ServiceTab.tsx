@@ -12,7 +12,7 @@ import { toast } from 'sonner'
 import { Plus, Search, RefreshCw } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ServiceHealthStatusData } from './ServiceHealthStatus'
-import { AppTabContentLayout } from '../../layout/AppTabContentLayout'
+import { AppTabLayout } from '../../layout/AppTabLayout'
 import { parseEndpoints } from '@/lib/serviceUtils'
 
 type Props = {
@@ -207,7 +207,7 @@ export function ServiceTab({
   }
 
   return (
-    <AppTabContentLayout title="Services">
+    <AppTabLayout title="Services">
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-none md:max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -338,6 +338,6 @@ export function ServiceTab({
           availableDomains={availableDomains}
         />
       )}
-    </AppTabContentLayout>
+    </AppTabLayout>
   )
 }

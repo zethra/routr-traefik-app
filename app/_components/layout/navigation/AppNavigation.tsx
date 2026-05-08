@@ -18,7 +18,7 @@ type Props = {
 
 export function AppNavigation({ isCollapsed, onCollapse, session, allProfiles, currentProfile, showLogoAndCollapse = true }: Props) {
   return (
-    <header className="border-b bg-card">
+    <header className="fixed top-0 left-0 right-0 border-b bg-card z-40">
       <div className="max-w-full mx-auto px-4 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           {showLogoAndCollapse && (

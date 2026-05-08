@@ -44,7 +44,9 @@ export function AppLayout({
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Desktop layout */}
-      <div className="hidden md:flex md:flex-col md:flex-1">
+      <div className={`hidden md:flex md:flex-col md:flex-1 md:min-h-screen transition-all duration-700 ${
+        sidebarCollapsed ? 'md:pl-20' : 'md:pl-64'
+      }`}>
         {/* Top navigation - shown when sidebar collapsed */}
         {sidebarCollapsed && (
           <AppNavigation
@@ -88,7 +90,7 @@ export function AppLayout({
             )}
 
           {/* Page content */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col pt-16">
           {/* Page content */}
           <main className="flex-1 overflow-auto px-4 py-4 md:py-6">
             <div className="max-w-6xl mx-auto">

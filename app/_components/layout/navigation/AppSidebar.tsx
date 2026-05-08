@@ -34,28 +34,26 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
   ]
 
   return (
-    <aside className={`border-r bg-card flex-shrink-0 h-screen overflow-hidden transition-all duration-700 flex flex-col ${
-      isOpen ? 'w-64' : 'w-20'
+    <aside className={`fixed left-0 top-0 h-screen border-r bg-card overflow-hidden flex flex-col transition-[width] duration-700 ${
+      isOpen ? 'z-50 w-64' : 'z-30 w-20'
     }`}>
       <div className="flex flex-col h-full">
-        {/* Header - visible when expanded */}
-        {isOpen && (
-          <div className="border-b px-4 py-5 flex items-center justify-between">
-            <AppBrand />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => onCollapse?.(true)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        {/* Header */}
+        <div className={`px-4 py-5 flex items-center justify-between flex-shrink-0 ${isOpen ? 'border-b' : 'opacity-0'}`} style={{ minHeight: '60px' }}>
+          <AppBrand />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => onCollapse?.(true)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        </div>
 
-        {/* Navigation - starts below header */}
+        {/* Navigation */}
         <nav className={`flex-1 space-y-3 pb-3 overflow-y-auto flex flex-col pt-3 ${
-          isOpen ? 'px-3' : 'px-0 items-center'
+          isOpen ? 'px-3 items-start' : 'px-0 items-center'
         }`}>
           {tabItems.map(item => {
             const Icon = iconMap[item.id]
@@ -63,8 +61,8 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`text-left rounded-md text-sm transition-colors flex items-center justify-center whitespace-nowrap ${
-                  isOpen ? 'w-full px-3 py-2 justify-start gap-3' : 'h-9 w-9 flex-shrink-0'
+                className={`text-left rounded-md text-sm flex items-center flex-shrink-0 ${
+                  isOpen ? 'w-full px-3 py-2 justify-start gap-3' : 'h-9 w-9 justify-center'
                 } ${
                   activeTab === item.id
                     ? 'bg-primary text-primary-foreground'

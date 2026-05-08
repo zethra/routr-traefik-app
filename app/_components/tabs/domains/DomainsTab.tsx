@@ -11,7 +11,7 @@ import { toast } from 'sonner'
 import { Calendar, Lock, MoreHorizontal, Network, Pencil, Plus, Route, Search, Trash2 } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { AppTabContentLayout } from '../../layout/AppTabContentLayout'
+import { AppTabLayout } from '../../layout/AppTabLayout'
 
 type Props = {
   profileId: string
@@ -77,7 +77,7 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
   }
 
   return (
-    <AppTabContentLayout title="Domains">
+    <AppTabLayout title="Domains">
       <div className="space-y-4">
         <div className="relative">
           <div className="relative flex-1 max-w-none pr-24">
@@ -202,6 +202,6 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
         />
       )}
       </div>
-    </AppTabContentLayout>
+    </AppTabLayout>
   )
 }

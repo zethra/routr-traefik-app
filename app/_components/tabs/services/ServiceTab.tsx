@@ -304,14 +304,13 @@ export function ServiceTab({
       </div>
 
       {/* Scrollable cards section */}
-      <div className="flex-1 min-h-0">
-        <div className="h-full overflow-y-auto space-y-3 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-2 md:p-4">
+      <div className="flex-1 min-h-0 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-2 md:p-4 flex flex-col">
       {services.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No services configured.</p>
       ) : filteredServices.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No services match your search.</p>
       ) : (
-        <div>
+        <div className="overflow-y-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 px-1 items-start">
             {sortedServices.map(service => (
               <ServiceCard
@@ -325,8 +324,6 @@ export function ServiceTab({
           </div>
         </div>
       )}
-
-        </div>
       </div>
 
       {addOpen && (

@@ -11,6 +11,7 @@ import { updateService, deleteService, toggleService } from '@/app/_actions/serv
 import { toast } from 'sonner'
 import { Plus, Search, RefreshCw } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { TabContentLayout } from '../TabContentLayout'
 
 type Props = {
   profileId: string
@@ -365,9 +366,9 @@ export function ServiceTab({
   }
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-3 md:p-4">
+    <TabContentLayout title="Services">
       <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-xs">
+        <div className="relative flex-1 max-w-none md:max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
             className="pl-8 h-9 text-sm rounded-xl border-border/70 bg-background/70"
@@ -390,7 +391,7 @@ export function ServiceTab({
         <div className="flex-1" />
         <Button size="sm" className="h-9 gap-1.5 rounded-xl border border-border/70 bg-foreground text-background hover:bg-foreground/90" onClick={() => setAddOpen(true)}>
           <Plus className="h-3.5 w-3.5" />
-          Create Service
+          Create
         </Button>
       </div>
 
@@ -496,6 +497,6 @@ export function ServiceTab({
           availableDomains={availableDomains}
         />
       )}
-    </div>
+    </TabContentLayout>
   )
 }

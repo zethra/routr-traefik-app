@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { DomainRow, ServiceRow, EntryPointRow, MiddlewareRow } from '@/lib/db'
-import { iconMap, TabValue } from './constants'
+import { iconMap, TabValue } from '../constants'
 import { AppLogo } from './AppLogo'
 
 type Props = {
@@ -53,7 +54,9 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
         )}
 
         {/* Navigation - starts below header */}
-        <nav className={`flex-1 space-y-3 px-3 pb-3 overflow-y-auto flex flex-col pt-3`}>
+        <nav className={`flex-1 space-y-3 pb-3 overflow-y-auto flex flex-col pt-3 ${
+          isOpen ? 'px-3' : 'px-0 items-center'
+        }`}>
           {navItems.map(item => {
             const Icon = iconMap[item.id]
             return (
@@ -65,7 +68,7 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
                 } ${
                   activeTab === item.id
                     ? 'bg-primary text-primary-foreground'
-                    : 'text-white hover:bg-muted hover:text-foreground'
+                    : 'text-foreground hover:bg-muted'
                 }`}
                 title={!isOpen ? item.label : undefined}
               >
@@ -73,7 +76,16 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
                 {isOpen && (
                   <>
                     <span className="font-medium flex-1">{item.label}</span>
-                    <span className="text-xs opacity-70">({item.count})</span>
+                    <Badge
+                      variant={activeTab === item.id ? "default" : "secondary"}
+                      className={`text-xs w-5 h-5 flex items-center justify-center ${
+                        activeTab === item.id
+                          ? 'dark:bg-background dark:text-primary bg-muted text-primary'
+                          : 'dark:bg-white dark:text-black bg-black text-white'
+                      }`}
+                    >
+                      {item.count}
+                    </Badge>
                   </>
                 )}
               </button>

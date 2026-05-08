@@ -1,7 +1,7 @@
 import { profiles, routers, middlewares, entryPoints, domains, services } from '@/lib/db'
 import { ThemeToggle } from './_components/ThemeToggle'
 import { ProfileSwitcher } from './_components/ProfileSwitcher'
-import { LayoutContent } from './_components/LayoutContent'
+import { LayoutContent } from './_components/layout/LayoutContent'
 import { ensureHealthMonitorStarted } from '@/lib/router-health'
 import { auth } from '@/auth'
 import { Button } from '@/components/ui/button'

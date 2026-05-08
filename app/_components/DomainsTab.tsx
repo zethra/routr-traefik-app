@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { Calendar, Lock, MoreHorizontal, Network, Pencil, Plus, Route, Search, Trash2 } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { TabContentLayout } from './TabContentLayout'
 
 type Props = {
   profileId: string
@@ -76,23 +77,24 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <Input
-            className="pl-8 h-9 text-sm"
-            placeholder="Search domains..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+    <TabContentLayout title="Domains">
+      <div className="space-y-4">
+        <div className="relative">
+          <div className="relative flex-1 max-w-none pr-24">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-8 h-9 text-sm w-full"
+              placeholder="Search domains..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <Button size="sm" className="h-9 gap-1.5 absolute right-0 top-0" onClick={() => setAddOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Create Domain</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
         </div>
-        <div className="flex-1" />
-        <Button size="sm" className="h-9 gap-1.5" onClick={() => setAddOpen(true)}>
-          <Plus className="h-3.5 w-3.5" />
-          Create Domain
-        </Button>
-      </div>
 
       <p className="text-muted-foreground text-xs">
         Routers whose hostname matches a domain here automatically receive a wildcard TLS certificate via the configured resolver. No per-router TLS configuration needed.
@@ -199,6 +201,7 @@ export function DomainsTab({ profileId, domains, routers }: Props) {
           domain={editTarget}
         />
       )}
-    </div>
+      </div>
+    </TabContentLayout>
   )
 }

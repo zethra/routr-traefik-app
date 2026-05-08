@@ -401,7 +401,11 @@ if (schemaVersion < 7) {
     (db.pragma('table_info(services)') as Array<{ name: string }>).map(c => c.name)
   )
   if (!serviceColumns.has('tag') && !serviceColumns.has('category')) {
-    db.exec(`ALTER TABLE services ADD COLUMN tag TEXT`)
+    try {
+      db.exec(`ALTER TABLE services ADD COLUMN tag TEXT`)
+    } catch (e) {
+      // Column might already exist, ignore
+    }
   }
 
   db.pragma('user_version = 7')
@@ -413,8 +417,16 @@ if (schemaVersion < 8) {
   )
   // If we have category, migrate it to tag (only if tag doesn't already exist)
   if (serviceColumns.has('category') && !serviceColumns.has('tag')) {
-    db.exec(`ALTER TABLE services ADD COLUMN tag TEXT`)
-    db.exec(`UPDATE services SET tag = category`)
+    try {
+      db.exec(`ALTER TABLE services ADD COLUMN tag TEXT`)
+    } catch (e) {
+      // Column might already exist, ignore
+    }
+    try {
+      db.exec(`UPDATE services SET tag = category`)
+    } catch (e) {
+      // Update might fail if column doesn't exist, ignore
+    }
   }
 
   db.pragma('user_version = 8')

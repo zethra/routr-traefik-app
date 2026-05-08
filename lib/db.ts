@@ -411,12 +411,10 @@ if (schemaVersion < 8) {
   const serviceColumns = new Set(
     (db.pragma('table_info(services)') as Array<{ name: string }>).map(c => c.name)
   )
-  // If we have category but not tag, add tag column and copy data
+  // If we have category, migrate it to tag (only if tag doesn't already exist)
   if (serviceColumns.has('category') && !serviceColumns.has('tag')) {
-    db.exec(`
-      ALTER TABLE services ADD COLUMN tag TEXT;
-      UPDATE services SET tag = category;
-    `)
+    db.exec(`ALTER TABLE services ADD COLUMN tag TEXT`)
+    db.exec(`UPDATE services SET tag = category`)
   }
 
   db.pragma('user_version = 8')

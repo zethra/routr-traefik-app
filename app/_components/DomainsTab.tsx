@@ -4,43 +4,18 @@ import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { DomainDialog } from './DomainDialog'
+import { DomainRow, RouterRow } from '@/lib/db'
+import { formatCreated, extractHostnames } from '@/lib/utils'
 import { deleteDomain } from '@/app/_actions/domains'
 import { toast } from 'sonner'
 import { Calendar, Lock, MoreHorizontal, Network, Pencil, Plus, Route, Search, Trash2 } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
-type DomainRow = {
-  id: string
-  domain: string
-  cert_resolver: string
-  created_at: string
-}
-
-type RouterRow = {
-  id: string
-  name: string
-  rule: string
-  enabled: number
-}
-
 type Props = {
   profileId: string
   domains: DomainRow[]
   routers: RouterRow[]
-}
-
-function extractHostnames(rule: string): string[] {
-  const match = rule.match(/Host\((.*)\)/)
-  if (!match) return []
-  return Array.from(match[1].matchAll(/`([^`]+)`/g), m => m[1].trim()).filter(Boolean)
-}
-
-function formatCreated(value: string): string {
-  const iso = value.includes('T') ? value : value.replace(' ', 'T')
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 export function DomainsTab({ profileId, domains, routers }: Props) {

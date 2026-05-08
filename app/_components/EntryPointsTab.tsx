@@ -3,16 +3,10 @@
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { EntryPointDialog } from './EntryPointDialog'
+import { EntryPointRow } from '@/lib/db'
 import { deleteEntryPoint } from '@/app/_actions/entrypoints'
 import { toast } from 'sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-
-type EntryPointRow = {
-  id: string
-  name: string
-  port: number | null
-  created_at: string
-}
 
 type Props = {
   profileId: string

@@ -2,64 +2,16 @@
 
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { RoutersTab } from './RoutersTab'
+import { RouterRow, MiddlewareRow, EntryPointRow, DomainRow, ServiceRow } from '@/lib/db'
 import { MiddlewaresTab } from './MiddlewaresTab'
 import { EntryPointsTab } from './EntryPointsTab'
 import { DomainsTab } from './DomainsTab'
-import { ServicesTab } from './ServicesTab'
+import { ServiceTab } from './services/ServiceTab'
 
-type RouterRow = {
-  id: string
-  name: string
-  rule: string
-  service_url: string
-  service_id: string | null
-  entry_points: string
-  middlewares: string
-  priority: number | null
-  enabled: number
-}
-
-type MiddlewareRow = {
-  id: string
-  name: string
-  type: string
-  config: string
-  enabled: number
-}
-
-type EntryPointRow = {
-  id: string
-  name: string
-  port: number | null
-  created_at: string
-}
-
-type DomainRow = {
-  id: string
-  domain: string
-  cert_resolver: string
-  created_at: string
-}
-
-type ServiceRow = {
-  id: string
-  name: string
-  endpoints: string
-  logo: string | null
-  tag: string | null
-  enabled: number
-  profile_id: string
-  created_at: string
-  updated_at: string
-}
-
-type TabValue = 'domains' | 'entrypoints' | 'middlewares' | 'routers' | 'services'
+type TabValue = 'domains' | 'entrypoints' | 'middlewares' | 'services'
 
 type Props = {
   profileId: string
-  profileName: string
-  profileToken: string
   routers: RouterRow[]
   middlewares: MiddlewareRow[]
   entryPoints: EntryPointRow[]
@@ -72,8 +24,6 @@ type Props = {
 
 export function MainTabs({
   profileId,
-  profileName,
-  profileToken,
   routers,
   middlewares,
   entryPoints,
@@ -81,7 +31,7 @@ export function MainTabs({
   services,
   entryPointNames,
   middlewareNames,
-  initialTab = 'routers',
+  initialTab = 'services',
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabValue>(initialTab)
 
@@ -90,7 +40,6 @@ export function MainTabs({
       <TabsList className="mb-4">
         <TabsTrigger value="domains">Domains</TabsTrigger>
         <TabsTrigger value="services">Services</TabsTrigger>
-        <TabsTrigger value="routers">Routes</TabsTrigger>
         <TabsTrigger value="entrypoints">Ingresses</TabsTrigger>
         <TabsTrigger value="middlewares">Middleware</TabsTrigger>
       </TabsList>
@@ -100,19 +49,13 @@ export function MainTabs({
       </TabsContent>
 
       <TabsContent value="services">
-        <ServicesTab profileId={profileId} services={services} routers={routers} onNavigate={setActiveTab} />
-      </TabsContent>
-
-      <TabsContent value="routers">
-        <RoutersTab
+        <ServiceTab
           profileId={profileId}
-          profileName={profileName}
-          profileToken={profileToken}
-          routers={routers}
-          entryPointNames={entryPointNames}
-          middlewareNames={middlewareNames}
-          domains={domains}
           services={services}
+          routers={routers}
+          availableEntryPoints={entryPointNames}
+          availableMiddlewares={middlewareNames}
+          availableDomains={domains}
         />
       </TabsContent>
 

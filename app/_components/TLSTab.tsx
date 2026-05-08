@@ -3,15 +3,10 @@
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { CertResolverDialog } from './CertResolverDialog'
+import { CertResolverRow } from '@/lib/db'
 import { deleteCertResolver } from '@/app/_actions/certresolvers'
 import { toast } from 'sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-
-type CertResolverRow = {
-  id: string
-  name: string
-  created_at: string
-}
 
 type Props = {
   certResolvers: CertResolverRow[]

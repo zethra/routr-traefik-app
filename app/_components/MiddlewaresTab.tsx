@@ -5,17 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { MiddlewareDialog } from './MiddlewareDialog'
+import { MiddlewareRow } from '@/lib/db'
 import { deleteMiddleware, toggleMiddleware } from '@/app/_actions/middlewares'
 import { toast } from 'sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-
-type MiddlewareRow = {
-  id: string
-  name: string
-  type: string
-  config: string
-  enabled: number
-}
 
 type Props = {
   profileId: string

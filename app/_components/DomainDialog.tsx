@@ -5,14 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DomainRow } from '@/lib/db'
 import { createDomain, updateDomain } from '@/app/_actions/domains'
 import { toast } from 'sonner'
-
-type DomainRow = {
-  id: string
-  domain: string
-  cert_resolver: string
-}
 
 type Props = {
   open: boolean

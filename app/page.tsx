@@ -67,8 +67,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
 
         <MainTabs
           profileId={profile.id}
-          profileName={profile.name}
-          profileToken={profile.token}
           routers={routerRows}
           middlewares={middlewareRows}
           entryPoints={entryPointRows}
@@ -76,7 +74,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           services={serviceRows}
           entryPointNames={epNames}
           middlewareNames={mwNames}
-          initialTab="routers"
         />
       </main>
     </div>

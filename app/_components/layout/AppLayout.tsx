@@ -42,9 +42,9 @@ export function AppLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Desktop layout */}
-      <div className={`hidden md:flex md:flex-col md:flex-1 md:min-h-screen transition-all duration-700 ${
+      <div className={`hidden md:flex md:flex-col md:flex-1 transition-all duration-700 ${
         sidebarCollapsed ? 'md:pl-20' : 'md:pl-64'
       }`}>
         {/* Top navigation - shown when sidebar collapsed */}
@@ -90,10 +90,10 @@ export function AppLayout({
             )}
 
           {/* Page content */}
-        <div className="flex-1 flex flex-col pt-16 relative z-0">
+        <div className="flex-1 flex flex-col pt-16 relative z-0 overflow-hidden">
           {/* Page content */}
-          <main className="flex-1 px-4 py-4 md:py-6 relative overflow-hidden">
-            <div className="max-w-6xl mx-auto h-full flex flex-col">
+          <main className="flex-1 min-h-0 px-4 py-4 md:py-6 relative overflow-hidden">
+            <div className="max-w-6xl mx-auto h-full min-h-0 flex flex-col">
               {activeTab === 'domains' && (
                 <DomainsTab profileId={profileId} domains={domains} routers={routers} />
               )}

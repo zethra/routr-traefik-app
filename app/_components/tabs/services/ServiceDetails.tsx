@@ -12,6 +12,7 @@ type Props = {
   routers?: RouterRow[]
   editable?: boolean
   showHeader?: boolean
+  canAddRoute?: boolean
   onLogoChange?: (base64: string) => void
   onLogoRemove?: () => void
   onNameChange?: (name: string) => void
@@ -26,6 +27,7 @@ export function ServiceDetails({
   routers = [],
   editable = false,
   showHeader = true,
+  canAddRoute = true,
   onLogoChange,
   onLogoRemove,
   onNameChange,
@@ -111,6 +113,7 @@ export function ServiceDetails({
             onRouteEdit={onRouteEdit}
             onRouteDelete={(id) => onRouteDelete?.(id)}
             variant={editable ? 'input' : 'display'}
+            canAddRoute={canAddRoute}
           />
         </div>
       ) : null}

@@ -134,7 +134,11 @@ export function ServiceDialog({
   }
 
   function handleRouteSubmit() {
-    if (!activeRule.trim() || !editService) {
+    if (!editService) {
+      toast.error('Create service first before adding routes')
+      return
+    }
+    if (!activeRule.trim()) {
       toast.error('Hostname is required')
       return
     }
@@ -213,6 +217,7 @@ export function ServiceDialog({
             }}
             routers={isEdit ? matchingRouters : []}
             editable={true}
+            canAddRoute={isEdit}
             onLogoChange={setLogo}
             onLogoRemove={() => setLogo('')}
             onNameChange={setName}
@@ -367,7 +372,7 @@ export function ServiceDialog({
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
-          {routeToEdit || showRouteForm ? (
+          {isEdit && (routeToEdit || showRouteForm) ? (
             <Button onClick={handleRouteSubmit} disabled={isPending}>
               {isPending ? 'Saving…' : 'Save'}
             </Button>

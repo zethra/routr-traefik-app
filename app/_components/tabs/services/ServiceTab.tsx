@@ -207,13 +207,10 @@ export function ServiceTab({
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 pb-4">
-        <h1 className="text-2xl font-bold">Services</h1>
-      </div>
-
+    <>
+    <AppTabLayout title="Services">
       {/* Non-scrollable controls section */}
-      <div className="flex-shrink-0 space-y-3 pb-4">
+      <div className="space-y-3 pb-4">
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-none md:max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -304,51 +301,49 @@ export function ServiceTab({
       </div>
 
       {/* Scrollable cards section */}
-      <div className="flex-1 min-h-0 rounded-2xl border border-border/70 bg-gradient-to-b from-background via-background to-muted/10 p-2 md:p-4 flex flex-col">
       {services.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No services configured.</p>
       ) : filteredServices.length === 0 ? (
         <p className="text-muted-foreground text-center py-12 text-sm">No services match your search.</p>
       ) : (
-        <div className="overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 px-1 items-start">
-            {sortedServices.map(service => (
-              <ServiceCard
-                key={service.id}
-                service={service}
-                routers={routers}
-                status={healthMap[service.id]}
-                onEdit={setEditTarget}
-              />
-            ))}
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 px-1 items-start pr-4">
+          {sortedServices.map(service => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              routers={routers}
+              status={healthMap[service.id]}
+              onEdit={setEditTarget}
+            />
+          ))}
         </div>
       )}
-      </div>
 
-      {addOpen && (
-        <ServiceDialog
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
-          profileId={profileId}
-          routers={routers}
-          availableEntryPoints={availableEntryPoints}
-          availableMiddlewares={availableMiddlewares}
-          availableDomains={availableDomains}
-        />
-      )}
-      {editTarget && (
-        <ServiceDialog
-          open={!!editTarget}
-          onClose={() => setEditTarget(null)}
-          profileId={profileId}
-          service={editTarget}
-          routers={routers}
-          availableEntryPoints={availableEntryPoints}
-          availableMiddlewares={availableMiddlewares}
-          availableDomains={availableDomains}
-        />
-      )}
-    </div>
+    </AppTabLayout>
+
+    {addOpen && (
+      <ServiceDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        profileId={profileId}
+        routers={routers}
+        availableEntryPoints={availableEntryPoints}
+        availableMiddlewares={availableMiddlewares}
+        availableDomains={availableDomains}
+      />
+    )}
+    {editTarget && (
+      <ServiceDialog
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        profileId={profileId}
+        service={editTarget}
+        routers={routers}
+        availableEntryPoints={availableEntryPoints}
+        availableMiddlewares={availableMiddlewares}
+        availableDomains={availableDomains}
+      />
+    )}
+    </>
   )
 }

@@ -11,9 +11,10 @@ type Props = {
   onRouteDelete?: (id: string) => void
   onRouteEdit?: (route: RouterRow) => void
   variant?: 'input' | 'display'
+  canAddRoute?: boolean
 }
 
-export function ServiceRoutesTable({ routes, onRouteDelete, onRouteEdit, variant = 'input' }: Props) {
+export function ServiceRoutesTable({ routes, onRouteDelete, onRouteEdit, variant = 'input', canAddRoute = true }: Props) {
   if (variant === 'display') {
     return (
       <div className="space-y-2">
@@ -65,7 +66,7 @@ export function ServiceRoutesTable({ routes, onRouteDelete, onRouteEdit, variant
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">Routes ({routes.length})</p>
-        <Button type="button" size="sm" onClick={() => onRouteEdit?.(undefined as any)} className="h-6 px-2 text-xs" title="Add route">
+        <Button type="button" size="sm" onClick={() => onRouteEdit?.(undefined as any)} className="h-6 px-2 text-xs" title={canAddRoute ? "Add route" : "Create service first"} disabled={!canAddRoute}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>

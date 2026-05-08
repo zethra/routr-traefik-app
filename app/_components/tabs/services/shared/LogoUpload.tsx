@@ -89,15 +89,12 @@ export function LogoUpload({ preview, onLogoChange, onLogoRemove, disabled }: Pr
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-12 w-12 p-0 border-dashed"
-            onClick={() => inputRef.current?.click()}
-          >
-            <Upload className="h-4 w-4" />
-          </Button>
+        <TooltipTrigger
+          className="h-12 w-12 p-0 flex items-center justify-center border border-input rounded-md border-dashed bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          onClick={() => inputRef.current?.click()}
+          disabled={disabled}
+        >
+          <Upload className="h-4 w-4" />
         </TooltipTrigger>
         <TooltipContent>Add logo</TooltipContent>
       </Tooltip>

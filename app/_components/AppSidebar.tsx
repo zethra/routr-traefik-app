@@ -54,7 +54,7 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
+        <nav className="flex-1 space-y-1 p-3 overflow-y-auto hidden md:flex md:flex-col">
           {navItems.map(item => {
             const Icon = iconMap[item.id]
             return (

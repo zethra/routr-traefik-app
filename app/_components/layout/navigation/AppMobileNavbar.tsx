@@ -32,8 +32,9 @@ export function AppMobileNavbar({ activeTab, onTabChange, counts }: Props) {
             }`}
           >
             <AppNavIcon
-              icon={<Icon className="h-5 w-5" />}
+              icon={<Icon className="h-6 w-6" />}
               count={count}
+              badgeClassName={activeTab === item.id ? "bg-primary text-primary-foreground" : "bg-muted/60 text-foreground"}
             />
             <span className="text-xs font-medium">{item.label}</span>
           </button>

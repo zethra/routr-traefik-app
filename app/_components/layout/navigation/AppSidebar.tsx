@@ -63,8 +63,8 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`text-left rounded-md text-sm transition-colors flex items-center justify-center gap-2 whitespace-nowrap ${
-                  isOpen ? 'w-full px-3 py-2 justify-start' : 'h-9 w-9 flex-shrink-0'
+                className={`text-left rounded-md text-sm transition-colors flex items-center justify-center whitespace-nowrap ${
+                  isOpen ? 'w-full px-3 py-2 justify-start gap-3' : 'h-9 w-9 flex-shrink-0'
                 } ${
                   activeTab === item.id
                     ? 'bg-primary text-primary-foreground'
@@ -73,12 +73,13 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
                 title={!isOpen ? item.label : undefined}
               >
                 <AppNavIcon
-                  icon={<Icon className="h-4 w-4" />}
+                  icon={<Icon className="h-5 w-5" />}
                   count={item.count}
+                  showBadge={isOpen}
                   badgeClassName={activeTab === item.id ? "dark:bg-black dark:text-white bg-white text-black" : "bg-primary text-primary-foreground"}
                 />
                 {isOpen && (
-                  <span className="font-medium flex-1">{item.label}</span>
+                  <span className="font-bold flex-1">{item.label}</span>
                 )}
               </button>
             )

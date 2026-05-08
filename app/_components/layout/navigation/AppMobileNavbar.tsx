@@ -1,6 +1,7 @@
 'use client'
 
-import { navItems, TabValue } from '../constants'
+import { navItems, TabValue } from './config'
+import { AppNavIcon } from './AppNavIcon'
 
 type Props = {
   activeTab: TabValue
@@ -13,9 +14,9 @@ type Props = {
   }
 }
 
-export function MobileNavbar({ activeTab, onTabChange, counts }: Props) {
+export function AppMobileNavbar({ activeTab, onTabChange, counts }: Props) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 md:hidden bg-card border-t border-border flex justify-around items-center h-20 z-40">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border flex justify-around items-center h-20 z-40">
       {navItems.map((item) => {
         const Icon = item.icon
         const count = counts[item.id as keyof typeof counts]
@@ -30,12 +31,10 @@ export function MobileNavbar({ activeTab, onTabChange, counts }: Props) {
                 : 'text-muted-foreground'
             }`}
           >
-            <div className="relative">
-              <Icon className="h-5 w-5" />
-              <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-full h-3.5 w-3.5 flex items-center justify-center">
-                {count}
-              </span>
-            </div>
+            <AppNavIcon
+              icon={<Icon className="h-5 w-5" />}
+              count={count}
+            />
             <span className="text-xs font-medium">{item.label}</span>
           </button>
         )

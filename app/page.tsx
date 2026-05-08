@@ -1,7 +1,7 @@
 import { profiles, routers, middlewares, entryPoints, domains, services } from '@/lib/db'
 import { ThemeToggle } from './_components/ThemeToggle'
-import { ProfileSwitcher } from './_components/ProfileSwitcher'
-import { LayoutContent } from './_components/layout/LayoutContent'
+import { ProfileSwitcher } from './_components/settings/ProfileSwitcher'
+import { AppLayout } from './_components/layout'
 import { ensureHealthMonitorStarted } from '@/lib/router-health'
 import { auth } from '@/auth'
 import { Button } from '@/components/ui/button'
@@ -36,7 +36,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const mwNames = middlewareRows.map(mw => mw.name)
 
   return (
-    <LayoutContent
+    <AppLayout
       session={session}
       allProfiles={allProfiles}
       currentProfile={profile.name}

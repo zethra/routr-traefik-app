@@ -19,6 +19,13 @@ type Props = {
 }
 
 export function ServiceEndpointsTable({ endpoints, onEndpointsChange, variant = 'input' }: Props) {
+  const [newUrl, setNewUrl] = useState('')
+  const [newWeight, setNewWeight] = useState('1')
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editUrl, setEditUrl] = useState('')
+  const [editWeight, setEditWeight] = useState('1')
+  const [showAddForm, setShowAddForm] = useState(false)
+
   if (variant === 'display') {
     return (
       <div className="space-y-2">
@@ -58,13 +65,6 @@ export function ServiceEndpointsTable({ endpoints, onEndpointsChange, variant = 
       </div>
     )
   }
-
-  const [newUrl, setNewUrl] = useState('')
-  const [newWeight, setNewWeight] = useState('1')
-  const [editingIdx, setEditingIdx] = useState<number | null>(null)
-  const [editUrl, setEditUrl] = useState('')
-  const [editWeight, setEditWeight] = useState('1')
-  const [showAddForm, setShowAddForm] = useState(false)
 
   const addEndpoint = () => {
     const url = newUrl.trim()

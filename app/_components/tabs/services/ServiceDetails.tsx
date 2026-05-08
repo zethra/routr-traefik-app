@@ -2,8 +2,8 @@
 
 import { ServiceRow, RouterRow } from '@/lib/db'
 import { parseEndpoints } from '@/lib/serviceUtils'
-import { ServiceLogoUpload } from './ServiceLogoUpload'
-import { ServiceTagsInput } from './ServiceTagsInput'
+import { LogoUpload } from './shared/LogoUpload'
+import { TagsInput } from './shared/TagsInput'
 import { ServiceEndpointsTable } from './ServiceEndpointsTable'
 import { ServiceRoutesTable } from './ServiceRoutesTable'
 
@@ -44,7 +44,7 @@ export function ServiceDetails({
       {showHeader && (
         <div className="flex gap-3 items-end">
           {editable ? (
-            <ServiceLogoUpload
+            <LogoUpload
               preview={service.logo || ''}
               onLogoChange={onLogoChange || (() => {})}
               onLogoRemove={onLogoRemove || (() => {})}
@@ -86,7 +86,7 @@ export function ServiceDetails({
       {/* Tags */}
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">Tags ({tags.length})</p>
-        <ServiceTagsInput
+        <TagsInput
           tags={tags}
           onTagsChange={onTagsChange || (() => {})}
           label=""

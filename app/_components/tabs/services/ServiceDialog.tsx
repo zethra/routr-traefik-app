@@ -17,6 +17,7 @@ import { createRouter, updateRouter, deleteRouter } from '@/app/_actions/routers
 import { toast } from 'sonner'
 import { X, Route } from 'lucide-react'
 import { ServiceDetails } from './ServiceDetails'
+import { ServiceRouteForm } from './ServiceRouteForm'
 
 type Props = {
   open: boolean
@@ -53,7 +54,6 @@ export function ServiceDialog({
     return tag ? tag.split(',').map(t => t.trim()).filter(Boolean) : []
   })
   const [logo, setLogo] = useState(editService?.logo ?? '')
-  const [logoPreview, setLogoPreview] = useState(editService?.logo ?? '')
   const [endpoints, setEndpoints] = useState<ParsedEndpoint[]>(() =>
     editService ? parseEndpoints(editService.endpoints) : []
   )
@@ -94,7 +94,6 @@ export function ServiceDialog({
     setName(editService?.name ?? '')
     setTags(editService?.tag ? editService.tag.split(',').map(t => t.trim()).filter(Boolean) : [])
     setLogo(editService?.logo ?? '')
-    setLogoPreview(editService?.logo ?? '')
     setEndpoints(editService ? parseEndpoints(editService.endpoints) : [])
     setRouteToEdit(null)
     setShowRouteForm(false)
@@ -214,14 +213,8 @@ export function ServiceDialog({
             }}
             routers={isEdit ? matchingRouters : []}
             editable={true}
-            onLogoChange={(base64) => {
-              setLogo(base64)
-              setLogoPreview(base64)
-            }}
-            onLogoRemove={() => {
-              setLogo('')
-              setLogoPreview('')
-            }}
+            onLogoChange={setLogo}
+            onLogoRemove={() => setLogo('')}
             onNameChange={setName}
             onTagsChange={setTags}
             onEndpointsChange={setEndpoints}

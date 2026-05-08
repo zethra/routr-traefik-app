@@ -5,7 +5,7 @@ type Props = {
   children: ReactNode
 }
 
-export function TabContentLayout({ title, children }: Props) {
+export function AppTabContentLayout({ title, children }: Props) {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{title}</h1>

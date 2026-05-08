@@ -11,18 +11,6 @@ import { MoreHorizontal, ChevronDown } from 'lucide-react'
 import { ServiceHealthStatus, ServiceHealthStatusData } from './ServiceHealthStatus'
 import { ServiceDetails } from './ServiceDetails'
 
-type EndpointStatus = {
-  url: string
-  up: boolean
-  latencyMs: number | null
-  error: string | null
-}
-
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.min(100, Math.max(0, value))
-}
-
 type Props = {
   service: ServiceRow
   routers: RouterRow[]

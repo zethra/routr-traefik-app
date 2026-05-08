@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DomainRow, ServiceRow, EntryPointRow, MiddlewareRow } from '@/lib/db'
-import { iconMap, TabValue } from './constants'
-import { AppLogo } from './AppLogo'
+import { iconMap, TabValue } from './config'
+import { AppBrand } from './AppBrand'
+import { AppNavIcon } from './AppNavIcon'
 
 type Props = {
   activeTab: TabValue
@@ -25,7 +26,7 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
     setIsOpen(!isCollapsed)
   }, [isCollapsed])
 
-  const navItems: Array<{ id: TabValue; label: string; count: number }> = [
+  const tabItems: Array<{ id: TabValue; label: string; count: number }> = [
     { id: 'domains', label: 'Domains', count: domains.length },
     { id: 'services', label: 'Services', count: services.length },
     { id: 'entrypoints', label: 'Ingresses', count: entryPoints.length },
@@ -34,13 +35,13 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
 
   return (
     <aside className={`border-r bg-card flex-shrink-0 h-screen overflow-hidden transition-all duration-700 flex flex-col ${
-      isOpen ? 'fixed top-0 left-0 w-64 z-50' : 'sticky top-0 w-20 z-0'
+      isOpen ? 'w-64' : 'w-20'
     }`}>
       <div className="flex flex-col h-full">
         {/* Header - visible when expanded */}
         {isOpen && (
           <div className="border-b px-4 py-5 flex items-center justify-between">
-            <AppLogo />
+            <AppBrand />
             <Button
               variant="ghost"
               size="icon"
@@ -53,8 +54,10 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
         )}
 
         {/* Navigation - starts below header */}
-        <nav className={`flex-1 space-y-3 px-3 pb-3 overflow-y-auto flex flex-col pt-3`}>
-          {navItems.map(item => {
+        <nav className={`flex-1 space-y-3 pb-3 overflow-y-auto flex flex-col pt-3 ${
+          isOpen ? 'px-3' : 'px-0 items-center'
+        }`}>
+          {tabItems.map(item => {
             const Icon = iconMap[item.id]
             return (
               <button
@@ -65,16 +68,17 @@ export function AppSidebar({ activeTab, onTabChange, domains, services, entryPoi
                 } ${
                   activeTab === item.id
                     ? 'bg-primary text-primary-foreground'
-                    : 'text-white hover:bg-muted hover:text-foreground'
+                    : 'text-foreground hover:bg-muted'
                 }`}
                 title={!isOpen ? item.label : undefined}
               >
-                <Icon className="h-4 w-4 flex-shrink-0" />
+                <AppNavIcon
+                  icon={<Icon className="h-4 w-4" />}
+                  count={item.count}
+                  badgeClassName={activeTab === item.id ? "dark:bg-black dark:text-white bg-white text-black" : "bg-primary text-primary-foreground"}
+                />
                 {isOpen && (
-                  <>
-                    <span className="font-medium flex-1">{item.label}</span>
-                    <span className="text-xs opacity-70">({item.count})</span>
-                  </>
+                  <span className="font-medium flex-1">{item.label}</span>
                 )}
               </button>
             )

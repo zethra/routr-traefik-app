@@ -15,7 +15,7 @@ type Props = {
   variant?: 'input' | 'display'
 }
 
-export function ServiceTagsInput({ tags, onTagsChange, label = 'Tags', variant = 'input' }: Props) {
+export function TagsInput({ tags, onTagsChange, label = 'Tags', variant = 'input' }: Props) {
   const [tagInput, setTagInput] = useState('')
 
   const handleAddTag = () => {

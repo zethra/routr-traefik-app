@@ -7,11 +7,13 @@ import { ServiceDialog } from './ServiceDialog'
 import { ServiceCard } from './ServiceCard'
 import { ServiceRow, RouterRow, DomainRow } from '@/lib/db'
 import { extractDomain, parseSqlDate } from '@/lib/utils'
-import { updateService, deleteService, toggleService } from '@/app/_actions/services'
+import { deleteService, toggleService } from '@/app/_actions/services'
 import { toast } from 'sonner'
 import { Plus, Search, RefreshCw } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { TabContentLayout } from '../TabContentLayout'
+import { ServiceHealthStatusData } from './ServiceHealthStatus'
+import { AppTabContentLayout } from '../../layout/AppTabContentLayout'
+import { parseEndpoints } from '@/lib/serviceUtils'
 
 type Props = {
   profileId: string
@@ -22,26 +24,6 @@ type Props = {
   availableDomains: DomainRow[]
 }
 
-type EndpointStatus = {
-  url: string
-  up: boolean
-  latencyMs: number | null
-  error: string | null
-}
-
-type ServiceHealthStatus = {
-  serviceId: string
-  isUp: boolean
-  upEndpoints: number
-  totalEndpoints: number
-  consecutiveFailures: number
-  sinceAt: string
-  lastCheckedAt: string
-  lastError: string | null
-  uptime24h: number
-  endpointStatuses: EndpointStatus[]
-}
-
 type ServiceHealthEvent = {
   id: string
   serviceId: string
@@ -50,44 +32,6 @@ type ServiceHealthEvent = {
   message: string
   createdAt: string
 }
-
-
-type ParsedEndpoint = {
-  url: string
-  weight: number
-}
-
-function parseEndpoints(endpoints: string): ParsedEndpoint[] {
-  const trimmed = endpoints.trim()
-  if (!trimmed) return []
-
-  try {
-    const parsed = JSON.parse(trimmed)
-    if (Array.isArray(parsed)) {
-      return parsed.flatMap((item): ParsedEndpoint[] => {
-        if (typeof item === 'string') {
-          const url = item.trim()
-          return url ? [{ url, weight: 1 }] : []
-        }
-        if (item && typeof item === 'object' && 'url' in item && typeof item.url === 'string') {
-          const url = item.url.trim()
-          const weight = typeof item.weight === 'number' ? item.weight : 1
-          return url ? [{ url, weight }] : []
-        }
-        return []
-      })
-    }
-  } catch {
-    // Backward compatibility with older single-url values
-  }
-
-  return trimmed ? [{ url: trimmed, weight: 1 }] : []
-}
-
-function endpointsToArray(parsed: ParsedEndpoint[]): string[] {
-  return parsed.map(ep => ep.url)
-}
-
 
 function formatDurationSince(value: string): string {
   const date = parseSqlDate(value)
@@ -104,107 +48,6 @@ function formatDurationSince(value: string): string {
   return `${totalDays}d ${totalHours % 24}h`
 }
 
-function clampPercent(value: number): number {
-  if (!Number.isFinite(value)) return 0
-  return Math.min(100, Math.max(0, value))
-}
-
-function TagDropdown({ service, allServices, onClose }: { service: ServiceRow; allServices: ServiceRow[]; onClose: () => void }) {
-  const [newTag, setNewTag] = useState('')
-  const [isPending, startTransition] = useTransition()
-
-  const allTagsSet = new Set<string>()
-  allServices.forEach(s => {
-    if (s.tag) {
-      s.tag.split(',').map(t => t.trim()).forEach(t => allTagsSet.add(t))
-    }
-  })
-  const existingTags = [...allTagsSet].sort()
-  const currentTags = service.tag ? service.tag.split(',').map(t => t.trim()).filter(Boolean) : []
-
-  const handleToggleTag = (tag: string) => {
-    const newTags = currentTags.includes(tag)
-      ? currentTags.filter(t => t !== tag)
-      : [...currentTags, tag]
-    const tagsString = newTags.length > 0 ? newTags.join(', ') : null
-    startTransition(async () => {
-      try {
-        await updateService(service.id, service.name, endpointsToArray(parseEndpoints(service.endpoints)), service.logo, tagsString)
-        toast.success('Service updated')
-        onClose()
-      } catch {
-        toast.error('Failed to update service')
-      }
-    })
-  }
-
-  const handleCreateTag = () => {
-    const trimmed = newTag.trim()
-    if (!trimmed) return
-    if (!currentTags.includes(trimmed)) {
-      const newTags = [...currentTags, trimmed]
-      const tagsString = newTags.join(', ')
-      startTransition(async () => {
-        try {
-          await updateService(service.id, service.name, endpointsToArray(parseEndpoints(service.endpoints)), service.logo, tagsString)
-          toast.success('Service updated')
-          onClose()
-        } catch {
-          toast.error('Failed to update service')
-        }
-      })
-    }
-    setNewTag('')
-  }
-
-  return (
-    <div className="absolute top-full left-0 mt-1 w-56 bg-background border border-border rounded-lg shadow-lg z-50 py-1">
-      <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Available Tags</div>
-      {existingTags.length === 0 ? (
-        <div className="px-3 py-2 text-xs text-muted-foreground italic">No tags yet</div>
-      ) : (
-        existingTags.map(tag => (
-          <button
-            key={tag}
-            onClick={() => handleToggleTag(tag)}
-            disabled={isPending}
-            className={`w-full text-left px-3 py-2 text-sm transition-colors disabled:opacity-50 flex items-center gap-2 ${
-              currentTags.includes(tag) ? 'bg-foreground/10 hover:bg-foreground/20' : 'hover:bg-muted'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={currentTags.includes(tag)}
-              readOnly
-              className="w-4 h-4"
-            />
-            {tag}
-          </button>
-        ))
-      )}
-      <div className="border-t border-border my-1" />
-      <div className="px-2 py-2 flex gap-1">
-        <input
-          type="text"
-          value={newTag}
-          onChange={e => setNewTag(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleCreateTag()}
-          placeholder="New tag…"
-          disabled={isPending}
-          className="flex-1 px-2 py-1 text-xs bg-muted border border-border rounded placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
-        />
-        <button
-          onClick={handleCreateTag}
-          disabled={!newTag.trim() || isPending}
-          className="px-2 py-1 text-xs bg-foreground text-background rounded hover:bg-foreground/90 disabled:opacity-50 transition-colors"
-        >
-          Add
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export function ServiceTab({
   profileId,
   services,
@@ -215,13 +58,11 @@ export function ServiceTab({
 }: Props) {
   const [addOpen, setAddOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<ServiceRow | null>(null)
-  const [openTagDropdown, setOpenTagDropdown] = useState<string | null>(null)
   const [selectedTagFilters, setSelectedTagFilters] = useState<Set<string>>(new Set())
   const [tagFilterOpen, setTagFilterOpen] = useState(false)
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
-  const [healthMap, setHealthMap] = useState<Record<string, ServiceHealthStatus>>({})
+  const [healthMap, setHealthMap] = useState<Record<string, ServiceHealthStatusData>>({})
   const [healthRefreshing, setHealthRefreshing] = useState(false)
   const hasHydratedHealthRef = useRef(false)
   const seenHealthEventIdsRef = useRef<Set<string>>(new Set())
@@ -236,9 +77,9 @@ export function ServiceTab({
     const response = await fetch(endpoint, { cache: 'no-store' })
     if (!response.ok) return
 
-    const payload = await response.json() as { statuses: ServiceHealthStatus[]; events: ServiceHealthEvent[] }
+    const payload = await response.json() as { statuses: ServiceHealthStatusData[]; events: ServiceHealthEvent[] }
 
-    const nextHealthMap = Object.fromEntries(payload.statuses.map((status: ServiceHealthStatus) => [status.serviceId, status]))
+    const nextHealthMap = Object.fromEntries(payload.statuses.map((status: ServiceHealthStatusData) => [status.serviceId, status]))
     setHealthMap(nextHealthMap)
 
     const orderedEvents = [...payload.events].reverse()
@@ -347,11 +188,11 @@ export function ServiceTab({
 
   const knownHealthStatuses = services
     .map(service => healthMap[service.id])
-    .filter((status): status is ServiceHealthStatus => status !== undefined)
+    .filter((status): status is ServiceHealthStatusData => status !== undefined)
   const upServices = knownHealthStatuses.filter(status => status.isUp).length
   const downServices = knownHealthStatuses.filter(status => !status.isUp).length
   const avgUptime24h = knownHealthStatuses.length > 0
-    ? knownHealthStatuses.reduce((sum, status) => sum + clampPercent(status.uptime24h), 0) / knownHealthStatuses.length
+    ? knownHealthStatuses.reduce((sum, status) => sum + status.uptime24h, 0) / knownHealthStatuses.length
     : 0
 
   function handleRefreshHealth() {
@@ -366,7 +207,7 @@ export function ServiceTab({
   }
 
   return (
-    <TabContentLayout title="Services">
+    <AppTabContentLayout title="Services">
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-none md:max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -497,6 +338,6 @@ export function ServiceTab({
           availableDomains={availableDomains}
         />
       )}
-    </TabContentLayout>
+    </AppTabContentLayout>
   )
 }

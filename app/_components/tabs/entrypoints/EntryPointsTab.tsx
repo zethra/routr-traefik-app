@@ -7,7 +7,7 @@ import { EntryPointRow } from '@/lib/db'
 import { deleteEntryPoint } from '@/app/_actions/entrypoints'
 import { toast } from 'sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { TabContentLayout } from './TabContentLayout'
+import { AppTabContentLayout } from '../../layout/AppTabContentLayout'
 
 type Props = {
   profileId: string
@@ -31,7 +31,7 @@ export function EntryPointsTab({ profileId, entryPoints }: Props) {
   }
 
   return (
-    <TabContentLayout title="Ingresses">
+    <AppTabContentLayout title="Ingresses">
       <div className="space-y-4">
         <div className="flex justify-end">
         <Button onClick={() => setAddOpen(true)}>Add Entry Point</Button>
@@ -82,6 +82,6 @@ export function EntryPointsTab({ profileId, entryPoints }: Props) {
 
       <EntryPointDialog open={addOpen} onClose={() => setAddOpen(false)} profileId={profileId} />
       </div>
-    </TabContentLayout>
+    </AppTabContentLayout>
   )
 }

@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Button } from '@/components/ui/button'
@@ -22,7 +23,9 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
-export function ServiceLogoUpload({ preview, onLogoChange, onLogoRemove, disabled }: Props) {
+export function LogoUpload({ preview, onLogoChange, onLogoRemove, disabled }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
   async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.currentTarget.files?.[0]
     if (!file) return
@@ -55,7 +58,7 @@ export function ServiceLogoUpload({ preview, onLogoChange, onLogoRemove, disable
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem
-              onClick={() => document.getElementById('logo-input')?.click()}
+              onClick={() => inputRef.current?.click()}
               disabled={disabled}
             >
               <Upload className="h-3.5 w-3.5 mr-2" />
@@ -72,7 +75,7 @@ export function ServiceLogoUpload({ preview, onLogoChange, onLogoRemove, disable
           </DropdownMenuContent>
         </DropdownMenu>
         <input
-          id="logo-input"
+          ref={inputRef}
           type="file"
           accept="image/*"
           onChange={handleLogoChange}
@@ -91,7 +94,7 @@ export function ServiceLogoUpload({ preview, onLogoChange, onLogoRemove, disable
             variant="outline"
             size="sm"
             className="h-12 w-12 p-0 border-dashed"
-            onClick={() => document.getElementById('logo-input')?.click()}
+            onClick={() => inputRef.current?.click()}
           >
             <Upload className="h-4 w-4" />
           </Button>
@@ -99,7 +102,7 @@ export function ServiceLogoUpload({ preview, onLogoChange, onLogoRemove, disable
         <TooltipContent>Add logo</TooltipContent>
       </Tooltip>
       <input
-        id="logo-input"
+        ref={inputRef}
         type="file"
         accept="image/*"
         onChange={handleLogoChange}
